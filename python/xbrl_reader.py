@@ -89,20 +89,26 @@ def parseElement(el):
 
     return id, url, label, text
 
-context_label_dic = []
+def NoneStr(x):
+    if x is None:
+        return ""
+    else:
+        return x
 
 class Context:
     def __init__(self):
-        self.explicitMember = []
+        self.prefix = ""
         self.startDate = None
         self.endDate = None
         self.instant = None
-        self.titles  = []
+        self.dimensionNames  = []
         self.members = []
 
+    def toString(self):
+        return "%s:%s:%s:%s:%s" % (NoneStr(self.startDate), NoneStr(self.endDate), NoneStr(self.instant), ','.join(self.dimensionNames), ','.join(self.members))
+
+
 taxonomy_tmpl = root_dir + '/data/EDINET/taxonomy/%s/タクソノミ/taxonomy/'
-dimension_label_err = []
-ns_url_err = []
 
 def parseNsUrl(ns_url):
 
@@ -137,9 +143,9 @@ def parseNsUrl(ns_url):
         base_path = root_dir + '/data/EDINET/taxonomy/2018-02-28/タクソノミ/taxonomy/jppfs/2018-02-28/label/jppfs_2018-02-28'
         xsd_path   = base_path + '.xsd'
         label_path = base_path + '_lab.xml'
-    else:
-        if not ns_url in ns_url_err:
-            ns_url_err.append(ns_url)
+    else:        
+        assert ns_url in [ "http://www.xbrl.org/2003/instance", "http://www.xbrl.org/2003/linkbase" ]
+
         return None, None
 
     return xsd_path, label_path
@@ -161,9 +167,6 @@ def getTitleNsLabel(text):
 def readContext(el, parent, ctx):
     id, url, label, text = parseElement(el)
 
-    if label is not None and not label in context_label_dic:
-        context_label_dic.append(label)
-
     if label == "identifier":
         assert parent == "entity"
 
@@ -181,11 +184,10 @@ def readContext(el, parent, ctx):
         assert parent == "scenario"
 
         title = getTitleNsLabel(el.get("dimension"))
-        if not title in ctx.titles:
-            ctx.titles.append(title)
+        if not title in ctx.dimensionNames:
+            ctx.dimensionNames.append(title)
 
-        if (title is None or title == "不明") and not label in dimension_label_err:
-            dimension_label_err.append(label)
+        assert title is not None and title != "不明"
 
         member = getTitleNsLabel(text)
         if member == "不明":
@@ -212,7 +214,6 @@ def readContext(el, parent, ctx):
         readContext(child, label, ctx)
 
 ns_dic = {}
-xsd_path_err = []
 
 def getNameSpace(path):
     f = open(path)
@@ -256,7 +257,11 @@ def getTitle(label_path, label):
 
         dics[label_path] = dic
 
-    if label in dic:
+    if label + '_3' in dic:
+        title = dic[label + '_3']
+    elif label + '_2' in dic:
+        title = dic[label + '_2']
+    elif label in dic:
         title = dic[label]
     else:
         return "不明"
@@ -277,7 +282,8 @@ ctx_names = {
     "CurrentYearInstant":"当期連結時点"
 }
 
-ctx_dic = []
+dup_dic = {}
+dup_dic2 = {}
 
 def dump(el, nest, logf):
     tab = '  ' * nest
@@ -293,28 +299,29 @@ def dump(el, nest, logf):
         else:
             assert context_ref in local_context_dic
             ctx = local_context_dic[context_ref]
-            if len(ctx.titles) == 0:
+            if len(ctx.dimensionNames) == 0:
 
-                if context_ref in ctx_names:
-
-                    context_txt = ctx_names[context_ref]
-                else:
-
-                    context_txt = context_ref
-                    if not context_ref in ctx_name_err:
-                        ctx_name_err.append(context_ref)
-
-                if not context_ref in ctx_dic:
-                    ctx_dic.append(context_ref)
+                assert context_ref in ctx_names
+                context_txt = ctx_names[context_ref]
 
             else:
-                context_txt = ','.join(ctx.titles)
+                context_txt = ','.join(ctx.dimensionNames)
 
             if len(ctx.members) != 0:
                 context_txt += ':' + ','.join(ctx.members)
 
+            context_txt = ctx.prefix + context_txt
+            # context_txt += ctx.toString()
+
         if url == "http://www.xbrl.org/2003/instance" and label == "context":
+
             ctx = Context()
+            k = id.find('_')
+            if k != -1:
+                s = id[:k]
+                if s in ctx_names:
+                    ctx.prefix = ctx_names[s] + "."
+
             readContext(el, None, ctx)
             local_context_dic[id] = ctx
             return
@@ -333,13 +340,17 @@ def dump(el, nest, logf):
 
             type = xsd_dic[label]
 
-            if type == "nonnum:textBlockItemType":
+            if type == "テキストブロック":
                 text = "省略"
                     
             title = getTitle(label_path, label)
         else:
-            if not url in xsd_path_err:
-                xsd_path_err.append(url)
+            assert url in [ 
+                "http://www.xbrl.org/2003/instance",
+                "http://www.xbrl.org/2003/linkbase",
+                "http://xbrl.ifrs.org/taxonomy/2015-03-11/ifrs-full",
+                "http://xbrl.ifrs.org/taxonomy/2014-03-05/ifrs-full"
+            ]
 
             type  = ""
             title = label
@@ -348,6 +359,22 @@ def dump(el, nest, logf):
             text = "省略:" + text[:20]
 
         logf.write("%stag : [%s][%s][%s][%s]\n" % (tab, type, context_txt, title, text))
+
+        if context_txt != '':
+            s = context_txt + '|' + title
+            t = context_ref + '|' + el.tag
+            if s in dup_dic:
+                if not s in dup_dic2:
+                    v = dup_dic[s]
+                    if not t in v:
+                        v.append(t)
+                        print(s)
+                        for x in v:
+                            print("  ", x)
+            else:
+
+                dup_dic[s] = [t]
+
     else:
         logf.write("%stag : [%s]\n" % (tab, el.tag))
     # print("%s属性" % tab)
@@ -355,14 +382,11 @@ def dump(el, nest, logf):
     for child in el:
         dump(child, nest + 1, logf)
 
-logf =  open('log.txt', 'w', encoding='utf-8')
+logf =  open(root_dir + '/data/log.txt', 'w', encoding='utf-8')
 
 ifrs_label_path = root_dir + '/data/EDINET/taxonomy/2018-02-28/タクソノミ/taxonomy/jppfs/2018-02-28/label/jppfs_2018-02-28_lab.xml'
 ifrs_labels = {}
 ReadLabel(ET.parse(ifrs_label_path).getroot(), ifrs_labels)
-
-ctx_name_err = []
-
 
 report_path = root_dir + '/data/EDINET/四半期報告書'
 for category_dir in Path(report_path).glob("*"):
@@ -377,6 +401,7 @@ for category_dir in Path(report_path).glob("*"):
 
         ns_dic = {}
         link_labels = {}
+        dup_dic = {}
 
         local_labels = {}
         for local_label_path in Path(cur_dir).glob("*_lab.xml"):
@@ -388,30 +413,14 @@ for category_dir in Path(report_path).glob("*"):
         root = tree.getroot()
         dump(root, 0, logf)
 
+        for k,v in dup_dic.items():
+            if 2 <= len(v):
+                dup_dic2[k] = v
+
+logf.write("dup dic2 ----------------------------------------------\n")
+for k,v in dup_dic2.items():
+    logf.write(k + "\n")
+    for x in v:
+        logf.write("  " + x + "\n")
+
 logf.close()
-
-
-print("context label ----------------------------------------------")
-for context_label in context_label_dic:
-    print(context_label)
-
-
-print("dimension label err ----------------------------------------------")
-for x in ctx_dic:
-    print(x)
-
-print("dimension label err ----------------------------------------------")
-for x in dimension_label_err:
-    print(x)
-
-print("xsd path err ----------------------------------------------")
-for x in xsd_path_err:
-    print(x)
-
-print("ns url err ----------------------------------------------")
-for x in ns_url_err:
-    print(x)
-
-print("ctx name err ----------------------------------------------")
-for x in ctx_name_err:
-    print(x)
