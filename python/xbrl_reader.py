@@ -7,7 +7,19 @@ root_dir = os.path.dirname( os.path.abspath(__file__) ).replace('\\', '/') + '/.
 dics = {}
 xsd_dics = {}
 
-type_dic = []
+type_dic = {
+    "xbrli:stringItemType" : "文字列",
+    "xbrli:booleanItemType" : "ブール値",
+    "xbrli:dateItemType" : "日付",
+    "xbrli:nonNegativeIntegerItemType" : "非負整数",
+    "nonnum:textBlockItemType" : "テキストブロック",
+    "xbrli:monetaryItemType" : "金額",
+    "num:perShareItemType" : "一株当たり金額",
+    "num:percentItemType" : "割合(%)",
+    "xbrli:decimalItemType" : "小数",
+    "xbrli:sharesItemType" : "株数",
+    "nonnum:domainItemType" : "ドメイン"
+}
 
 def splitUrlLabel(text):
     if text[0] == '{':
@@ -26,10 +38,8 @@ def ReadSchema(el, dic):
 
         name = el.get("name")
         type = el.get("type")
-        if not type in type_dic:
-            type_dic.append(type)
-            # print("element : [%s][%s][%s]" % (url, name, type))
-        dic[name] = type
+        assert type in type_dic
+        dic[name] = type_dic[ type ]
                 
     for child in el:
         ReadSchema(child, dic)
@@ -380,9 +390,6 @@ for category_dir in Path(report_path).glob("*"):
 
 logf.close()
 
-print("type ----------------------------------------------")
-for type in type_dic:
-    print(type)
 
 print("context label ----------------------------------------------")
 for context_label in context_label_dic:
