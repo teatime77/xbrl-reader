@@ -4,8 +4,11 @@ from pathlib import Path
 
 root_dir = os.path.dirname( os.path.abspath(__file__) ).replace('\\', '/') + '/..'
 
-dics = {}
+label_dics = {}
 xsd_dics = {}
+
+label_role = "http://www.xbrl.org/2003/role/label"
+verboseLabel_role = "http://www.xbrl.org/2003/role/verboseLabel"
 
 type_dic = {
     "xbrli:stringItemType" : "文字列",
@@ -31,25 +34,46 @@ def splitUrlLabel(text):
     
     return None, None
 
-def ReadSchema(el, dic):
+def ReadSchema(el, xsd_dic):
     url, label = splitUrlLabel(el.tag)
 
     if label == "element":
 
-        name = el.get("name")
+        ele = Element()
+        ele.name = el.get("name")
+        ele.id   = el.get("id")
+
         type = el.get("type")
         assert type in type_dic
-        dic[name] = type_dic[ type ]
+        ele.type = type_dic[ type ]
+
+        xsd_dic[ele.name] = ele
+
+        if ele.id is not None:
+            xsd_dic[ele.id] = ele
                 
     for child in el:
-        ReadSchema(child, dic)
+        ReadSchema(child, xsd_dic)
 
-def ReadLabel(el, dic):
+def getAttribs(el):
+    attr = {}
+    for k, v in el.attrib.items():
+        attr_url, attr_label = splitUrlLabel(k)
+        attr[attr_label] = v
+
+    return attr
+
+def ReadLabel(el, xsd_dic, resource_dic, label_dic):
     if el.tag[0] == '{':
         i = el.tag.index('}')
         url = el.tag[1:i]
         label = el.tag[i+1:]
         if label == "label":
+
+            attr = getAttribs(el)
+            if 'label' in attr and 'role' in attr:
+                if attr['role'] in [ label_role, verboseLabel_role ]:
+                    resource_dic[ attr['label'] ] = { 'role':attr['role'], 'text': el.text }
 
             id = el.get("id")
             if id is None:
@@ -66,10 +90,19 @@ def ReadLabel(el, dic):
             assert id.startswith("label_")
             name = id[6:]
             # print("label : [%s][%s][%s][%s]" % (url, label, name, el.text))
-            dic[name] = el.text
-                
+            label_dic[name] = el.text
+
+        elif label == "labelArc":
+            if xsd_dic is not None:
+                attr = getAttribs(el)
+
+                if 'from' in attr and attr['from'] in xsd_dic and 'to' in attr and attr['to'] in resource_dic:
+                    ele = xsd_dic[ attr['from'] ]
+                    res = resource_dic[ attr['to'] ]
+                    ele.labels[ res['role'] ] = res['text']
+
     for child in el:
-        ReadLabel(child, dic)
+        ReadLabel(child, xsd_dic, resource_dic, label_dic)
 
 
 local_context_dic = {}
@@ -107,6 +140,12 @@ class Context:
     def toString(self):
         return "%s:%s:%s:%s:%s" % (NoneStr(self.startDate), NoneStr(self.endDate), NoneStr(self.instant), ','.join(self.dimensionNames), ','.join(self.members))
 
+class Element:
+    def __init__(self):
+        self.name = None
+        self.id   = None
+        self.type = None
+        self.labels = {}
 
 taxonomy_tmpl = root_dir + '/data/EDINET/taxonomy/%s/タクソノミ/taxonomy/'
 
@@ -159,8 +198,9 @@ def getTitleNsLabel(text):
         label      = v1[1]
 
         xsd_path, label_path = parseNsUrl(ns_url)
+        xsd_dic, label_dic = GetSchemaLabelDic(xsd_path, label_path)
 
-        title = getTitle(label_path, label)
+        title = getTitle(xsd_dic, label_dic, label)
 
     return title
 
@@ -198,10 +238,8 @@ def readContext(el, parent, ctx):
             else:
                 v = text.split(':')
                 s = v[1]
-                if s in ifrs_labels:
-                    member = ifrs_labels[s]
-                elif s in local_labels:
-                    member = local_labels[s]
+                if s in local_label_dic:
+                    member = local_label_dic[s]
                 else:
                     assert False
 
@@ -238,31 +276,61 @@ def getNameSpace(path):
             break
     f.close()
 
-def getTitle(label_path, label):
-    if label_path in dics:
-        dic = dics[label_path]
+def GetSchemaLabelDic(xsd_path, label_path):
+    xsd_dic = None
+    label_dic = None
+
+    if xsd_path is not None and os.path.exists(xsd_path):
+
+        if xsd_path in xsd_dics:
+            xsd_dic = xsd_dics[xsd_path]
+        else:
+            xsd_dic = {}
+
+            xsd_tree = ET.parse(xsd_path)
+            xsd_root = xsd_tree.getroot()
+            ReadSchema(xsd_root, xsd_dic)
+            xsd_dics[xsd_path] = xsd_dic
+
+    if label_path in label_dics:
+        label_dic = label_dics[label_path]
     else:
 
-        if not os.path.exists(label_path):
-            # print("label", label_path)
+        if label_path is not None and os.path.exists(label_path):
 
-            return "不明"
-        assert os.path.exists(label_path)
+            label_tree = ET.parse(label_path)
+            label_root = label_tree.getroot()
 
-        label_tree = ET.parse(label_path)
-        label_root = label_tree.getroot()
+            label_dic = {}
+            resource_dic = {}
+            ReadLabel(label_root, xsd_dic, resource_dic, label_dic)
 
-        dic = {}
-        ReadLabel(label_root, dic)
+            label_dics[label_path] = label_dic
 
-        dics[label_path] = dic
+    return xsd_dic, label_dic
 
-    if label + '_3' in dic:
-        title = dic[label + '_3']
-    elif label + '_2' in dic:
-        title = dic[label + '_2']
-    elif label in dic:
-        title = dic[label]
+def getTitle(xsd_dic, label_dic, label):
+    if label.startswith("AllowanceForDoubtfulAccounts"):
+        title = None
+
+    ele = None
+    if label in local_xsd_dic:
+        ele = local_xsd_dic[label]
+    elif xsd_dic is not None and label in xsd_dic:
+        ele = xsd_dic[label]
+
+    if ele is not None:
+        if verboseLabel_role in ele.labels:
+            return ele.labels[verboseLabel_role]
+        elif label_role in ele.labels:
+            return ele.labels[label_role]
+
+    if label + '_3' in label_dic:
+        title = label_dic[label + '_3']
+    elif label + '_2' in label_dic:
+        title = label_dic[label + '_2']
+    elif label in label_dic:
+        title = label_dic[label]
     else:
         return "不明"
 
@@ -284,76 +352,60 @@ ctx_names = {
 
 dup_dic = {}
 dup_dic2 = {}
+skip_labels = []
 
 def dump(el, nest, logf):
     tab = '  ' * nest
 
     id, url, label, text = parseElement(el)
+
+    if url == "http://www.xbrl.org/2003/instance" and label == "context":
+
+        ctx = Context()
+        k = id.find('_')
+        if k != -1:
+            s = id[:k]
+            if s in ctx_names:
+                ctx.prefix = ctx_names[s] + "."
+
+        readContext(el, None, ctx)
+        local_context_dic[id] = ctx
+        return
+
     xsd_path, label_path = parseNsUrl(url)
 
-    if el.tag[0] == '{':
+    xsd_dic, label_dic = GetSchemaLabelDic(xsd_path, label_path)
+
+    assert el.tag[0] == '{'
+                
+    if xsd_dic is not None and label_dic is not None:
 
         context_ref = el.get("contextRef")
-        if context_ref is None:
-            context_txt = ""
+        assert context_ref is not None
+
+        assert context_ref in local_context_dic
+        ctx = local_context_dic[context_ref]
+
+        if len(ctx.dimensionNames) == 0:
+
+            assert context_ref in ctx_names
+            context_txt = ctx_names[context_ref]
+
         else:
-            assert context_ref in local_context_dic
-            ctx = local_context_dic[context_ref]
-            if len(ctx.dimensionNames) == 0:
+            context_txt = ','.join(ctx.dimensionNames)
 
-                assert context_ref in ctx_names
-                context_txt = ctx_names[context_ref]
+        if len(ctx.members) != 0:
+            context_txt += ':' + ','.join(ctx.members)
 
-            else:
-                context_txt = ','.join(ctx.dimensionNames)
+        context_txt = ctx.prefix + context_txt
 
-            if len(ctx.members) != 0:
-                context_txt += ':' + ','.join(ctx.members)
+        ele = xsd_dic[label]
+        type = ele.type
 
-            context_txt = ctx.prefix + context_txt
-            # context_txt += ctx.toString()
+        if type == "テキストブロック":
+            text = "省略"
 
-        if url == "http://www.xbrl.org/2003/instance" and label == "context":
-
-            ctx = Context()
-            k = id.find('_')
-            if k != -1:
-                s = id[:k]
-                if s in ctx_names:
-                    ctx.prefix = ctx_names[s] + "."
-
-            readContext(el, None, ctx)
-            local_context_dic[id] = ctx
-            return
-
-        if xsd_path is not None and os.path.exists(xsd_path):
-
-            if xsd_path in xsd_dics:
-                xsd_dic = xsd_dics[xsd_path]
-            else:
-                xsd_dic = {}
-
-                xsd_tree = ET.parse(xsd_path)
-                xsd_root = xsd_tree.getroot()
-                ReadSchema(xsd_root, xsd_dic)
-                xsd_dics[xsd_path] = xsd_dic
-
-            type = xsd_dic[label]
-
-            if type == "テキストブロック":
-                text = "省略"
-                    
-            title = getTitle(label_path, label)
-        else:
-            assert url in [ 
-                "http://www.xbrl.org/2003/instance",
-                "http://www.xbrl.org/2003/linkbase",
-                "http://xbrl.ifrs.org/taxonomy/2015-03-11/ifrs-full",
-                "http://xbrl.ifrs.org/taxonomy/2014-03-05/ifrs-full"
-            ]
-
-            type  = ""
-            title = label
+        title = getTitle(xsd_dic, label_dic, label)
 
         if text is not None and 100 < len(text):
             text = "省略:" + text[:20]
@@ -372,27 +424,38 @@ def dump(el, nest, logf):
                         for x in v:
                             print("  ", x)
             else:
-
                 dup_dic[s] = [t]
 
     else:
-        logf.write("%stag : [%s]\n" % (tab, el.tag))
-    # print("%s属性" % tab)
+        assert url in [ 
+            "http://www.xbrl.org/2003/instance",
+            "http://www.xbrl.org/2003/linkbase",
+            "http://xbrl.ifrs.org/taxonomy/2015-03-11/ifrs-full",
+            "http://xbrl.ifrs.org/taxonomy/2014-03-05/ifrs-full"
+        ]
+
+        if not label in skip_labels:
+            skip_labels.append(label)
     
     for child in el:
         dump(child, nest + 1, logf)
 
 logf =  open(root_dir + '/data/log.txt', 'w', encoding='utf-8')
 
-ifrs_label_path = root_dir + '/data/EDINET/taxonomy/2018-02-28/タクソノミ/taxonomy/jppfs/2018-02-28/label/jppfs_2018-02-28_lab.xml'
-ifrs_labels = {}
-ReadLabel(ET.parse(ifrs_label_path).getroot(), ifrs_labels)
-
 report_path = root_dir + '/data/EDINET/四半期報告書'
 for category_dir in Path(report_path).glob("*"):
     for p in category_dir.glob("*/*/XBRL/PublicDoc/*.xbrl"):
 
         path = str(p)
+        basename = os.path.basename(path)
+        # if not basename in [
+        #         "jpcrp040300-q1r-001_E31632-000_2018-06-30_01_2018-08-09.xbrl",
+        #         "jpcrp040300-q1r-001_E01669-000_2018-06-30_01_2018-08-10.xbrl",
+        #         "jpcrp040300-q1r-001_E01624-000_2018-06-30_01_2018-08-10.xbrl"
+        #     ]:
+
+        #     continue
+
         print("XBRL", path)
 
         cur_dir = os.path.dirname(path).replace('\\', '/')
@@ -402,10 +465,24 @@ for category_dir in Path(report_path).glob("*"):
         ns_dic = {}
         link_labels = {}
         dup_dic = {}
+        local_xsd_dic = {}
+        local_label_dic = {}
 
-        local_labels = {}
-        for local_label_path in Path(cur_dir).glob("*_lab.xml"):
-            ReadLabel(ET.parse(str(local_label_path)).getroot(), local_labels)
+        local_label_cnt = 0
+        for local_xsd_path_obj in Path(cur_dir).glob("*.xsd"):
+            local_xsd_path = str(local_xsd_path_obj)
+
+            ReadSchema(ET.parse(local_xsd_path).getroot(), local_xsd_dic)
+
+            local_label_path = local_xsd_path[:len(local_xsd_path) - 4] + "_lab.xml"
+            if os.path.exists(local_label_path):
+
+                resource_dic = {}
+                ReadLabel(ET.parse(str(local_label_path)).getroot(), local_xsd_dic, resource_dic, local_label_dic)
+                local_label_cnt += 1
+
+        local_label_path_list = list( Path(cur_dir).glob("*_lab.xml") )
+        assert len(local_label_path_list) == local_label_cnt
 
         getNameSpace(path)
 
@@ -415,12 +492,21 @@ for category_dir in Path(report_path).glob("*"):
 
         for k,v in dup_dic.items():
             if 2 <= len(v):
-                dup_dic2[k] = v
+                dup_dic2[k] = [ basename, v ]
+
+
+logf.write("skip labels ----------------------------------------------\n")
+for x in skip_labels:
+    logf.write(x + "\n")
 
 logf.write("dup dic2 ----------------------------------------------\n")
-for k,v in dup_dic2.items():
+for k,val in dup_dic2.items():
     logf.write(k + "\n")
+    basename, v = val[0], val[1]
+    logf.write("  " + basename + "\n")
     for x in v:
         logf.write("  " + x + "\n")
+
+
 
 logf.close()
