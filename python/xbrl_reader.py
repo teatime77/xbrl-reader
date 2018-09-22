@@ -9,6 +9,7 @@ xsd_dics = {}
 
 label_role = "http://www.xbrl.org/2003/role/label"
 verboseLabel_role = "http://www.xbrl.org/2003/role/verboseLabel"
+terseLabel_role = "http://www.xbrl.org/2003/role/terseLabel"
 
 type_dic = {
     "xbrli:stringItemType" : "文字列",
@@ -21,7 +22,8 @@ type_dic = {
     "num:percentItemType" : "割合(%)",
     "xbrli:decimalItemType" : "小数",
     "xbrli:sharesItemType" : "株数",
-    "nonnum:domainItemType" : "ドメイン"
+    "nonnum:domainItemType" : "ドメイン",
+    "xbrli:pureItemType" : "純粋型"
 }
 
 def splitUrlLabel(text):
@@ -72,7 +74,7 @@ def ReadLabel(el, xsd_dic, resource_dic, label_dic):
 
             attr = getAttribs(el)
             if 'label' in attr and 'role' in attr:
-                if attr['role'] in [ label_role, verboseLabel_role ]:
+                if attr['role'] in [ label_role, verboseLabel_role, terseLabel_role ]:
                     resource_dic[ attr['label'] ] = { 'role':attr['role'], 'text': el.text }
 
             id = el.get("id")
@@ -179,9 +181,22 @@ def parseNsUrl(ns_url):
     elif ns_url.startswith("http://xbrl.ifrs.org/taxonomy/"):
         # http://xbrl.ifrs.org/taxonomy/2015-03-11/ifrs-full
 
-        base_path = root_dir + '/data/EDINET/taxonomy/2018-02-28/タクソノミ/taxonomy/jppfs/2018-02-28/label/jppfs_2018-02-28'
-        xsd_path   = base_path + '.xsd'
-        label_path = base_path + '_lab.xml'
+        v = ns_url.split('/')
+        ifrs_path = root_dir + "/data/IFRS/IFRST_%s/full_ifrs/full_ifrs-cor_%s.xsd"
+
+        xsd_path = ifrs_path % (v[4], v[4])
+        if not os.path.exists(xsd_path):
+            logf.write("XSDがないよ。 %s\n" % xsd_path)
+            xsd_path = None
+
+        vp = list(Path(cur_dir).glob("ifrs*_lab.xml"))
+        assert len(vp) == 1
+        label_path = str(vp[0]).replace('\\', '/')
+
+
+        # xsd_path   = root_dir + '/data/EDINET/taxonomy/2018-02-28/タクソノミ/taxonomy/jppfs/2018-02-28/jppfs_cor_2018-02-28.xsd'
+        # label_path = root_dir + '/data/EDINET/taxonomy/2018-02-28/タクソノミ/taxonomy/jppfs/2018-02-28/label/jppfs_2018-02-28_lab.xml'
+
     else:        
         assert ns_url in [ "http://www.xbrl.org/2003/instance", "http://www.xbrl.org/2003/linkbase" ]
 
@@ -223,11 +238,13 @@ def readContext(el, parent, ctx):
     elif label == "explicitMember":
         assert parent == "scenario"
 
-        title = getTitleNsLabel(el.get("dimension"))
+        dimension = el.get("dimension")
+        title = getTitleNsLabel(dimension)
         if not title in ctx.dimensionNames:
             ctx.dimensionNames.append(title)
 
-        assert title is not None and title != "不明"
+        if title == "不明":
+            assert dimension.startswith('ifrs-full:')
 
         member = getTitleNsLabel(text)
         if member == "不明":
@@ -236,6 +253,7 @@ def readContext(el, parent, ctx):
                 member = link_labels[s]
 
             else:
+                member = getTitleNsLabel(text)
                 v = text.split(':')
                 s = v[1]
                 if s in local_label_dic:
@@ -280,11 +298,14 @@ def GetSchemaLabelDic(xsd_path, label_path):
     xsd_dic = None
     label_dic = None
 
-    if xsd_path is not None and os.path.exists(xsd_path):
+    if xsd_path is not None:
+        if xsd_path.startswith(cur_dir):
+            xsd_dic = local_xsd_dics[xsd_path]
 
-        if xsd_path in xsd_dics:
+        elif xsd_path in xsd_dics:
             xsd_dic = xsd_dics[xsd_path]
-        else:
+
+        elif os.path.exists(xsd_path):
             xsd_dic = {}
 
             xsd_tree = ET.parse(xsd_path)
@@ -292,11 +313,14 @@ def GetSchemaLabelDic(xsd_path, label_path):
             ReadSchema(xsd_root, xsd_dic)
             xsd_dics[xsd_path] = xsd_dic
 
-    if label_path in label_dics:
-        label_dic = label_dics[label_path]
-    else:
+    if label_path is not None:
+        if label_path.startswith(cur_dir):
+            label_dic = local_label_dics[label_path]
 
-        if label_path is not None and os.path.exists(label_path):
+        elif label_path in label_dics:
+            label_dic = label_dics[label_path]
+
+        elif os.path.exists(label_path):
 
             label_tree = ET.parse(label_path)
             label_root = label_tree.getroot()
@@ -310,13 +334,10 @@ def GetSchemaLabelDic(xsd_path, label_path):
     return xsd_dic, label_dic
 
 def getTitle(xsd_dic, label_dic, label):
-    if label.startswith("AllowanceForDoubtfulAccounts"):
-        title = None
+    title = "不明"
 
     ele = None
-    if label in local_xsd_dic:
-        ele = local_xsd_dic[label]
-    elif xsd_dic is not None and label in xsd_dic:
+    if xsd_dic is not None and label in xsd_dic:
         ele = xsd_dic[label]
 
     if ele is not None:
@@ -324,6 +345,8 @@ def getTitle(xsd_dic, label_dic, label):
             return ele.labels[verboseLabel_role]
         elif label_role in ele.labels:
             return ele.labels[label_role]
+        elif terseLabel_role in ele.labels:
+            return ele.labels[terseLabel_role]
 
     if label + '_3' in label_dic:
         title = label_dic[label + '_3']
@@ -331,8 +354,6 @@ def getTitle(xsd_dic, label_dic, label):
         title = label_dic[label + '_2']
     elif label in label_dic:
         title = label_dic[label]
-    else:
-        return "不明"
 
     return title
 
@@ -448,6 +469,9 @@ for category_dir in Path(report_path).glob("*"):
 
         path = str(p)
         basename = os.path.basename(path)
+        # if basename != 'ifrs-q3r-001_E00949-000_2016-12-31_01_2017-02-10.xbrl':
+        #     continue
+
         # if not basename in [
         #         "jpcrp040300-q1r-001_E31632-000_2018-06-30_01_2018-08-09.xbrl",
         #         "jpcrp040300-q1r-001_E01669-000_2018-06-30_01_2018-08-10.xbrl",
@@ -465,18 +489,23 @@ for category_dir in Path(report_path).glob("*"):
         ns_dic = {}
         link_labels = {}
         dup_dic = {}
-        local_xsd_dic = {}
-        local_label_dic = {}
+        local_xsd_dics = {}
+        local_label_dics = {}
 
         local_label_cnt = 0
         for local_xsd_path_obj in Path(cur_dir).glob("*.xsd"):
-            local_xsd_path = str(local_xsd_path_obj)
+            local_xsd_path = str(local_xsd_path_obj).replace('\\', '/')
+
+            local_xsd_dic = {}
+            local_xsd_dics[local_xsd_path] = local_xsd_dic
 
             ReadSchema(ET.parse(local_xsd_path).getroot(), local_xsd_dic)
 
             local_label_path = local_xsd_path[:len(local_xsd_path) - 4] + "_lab.xml"
             if os.path.exists(local_label_path):
 
+                local_label_dic = {}
+                local_label_dics[local_label_path] = local_label_dic
                 resource_dic = {}
                 ReadLabel(ET.parse(str(local_label_path)).getroot(), local_xsd_dic, resource_dic, local_label_dic)
                 local_label_cnt += 1
