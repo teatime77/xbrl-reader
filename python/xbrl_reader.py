@@ -36,10 +36,19 @@ def splitUrlLabel(text):
     
     return None, None
 
-def ReadSchema(el, xsd_dic):
+
+def ReadSchema(is_local, xsd_path, el, xsd_dic):
     url, label = splitUrlLabel(el.tag)
 
-    if label == "element":
+    if label == 'schema':
+        target_ns = el.get('targetNamespace')
+        if is_local:
+            local_xsd_url2path[target_ns] = xsd_path
+        else:
+            xsd_url2path[target_ns] = xsd_path
+
+        attr = getAttribs(el)
+    elif label == "element":
 
         ele = Element()
         ele.name = el.get("name")
@@ -55,7 +64,7 @@ def ReadSchema(el, xsd_dic):
             xsd_dic[ele.id] = ele
                 
     for child in el:
-        ReadSchema(child, xsd_dic)
+        ReadSchema(is_local, xsd_path, child, xsd_dic)
 
 def getAttribs(el):
     attr = {}
@@ -70,7 +79,12 @@ def ReadLabel(el, xsd_dic, resource_dic, label_dic):
         i = el.tag.index('}')
         url = el.tag[1:i]
         label = el.tag[i+1:]
-        if label == "label":
+
+        if label == "loc":
+
+            attr = getAttribs(el)
+            pass
+        elif label == "label":
 
             attr = getAttribs(el)
             if 'label' in attr and 'role' in attr:
@@ -151,6 +165,8 @@ class Element:
 
 taxonomy_tmpl = root_dir + '/data/EDINET/taxonomy/%s/タクソノミ/taxonomy/'
 
+ns_url_dic = {}
+
 def parseNsUrl(ns_url):
 
     if ns_url.startswith("http://disclosure.edinet-fsa.go.jp/taxonomy/"):
@@ -202,6 +218,23 @@ def parseNsUrl(ns_url):
 
         return None, None
 
+    if xsd_path is not None:
+        if xsd_path.startswith(cur_dir):
+            dic = local_ns_url_dic
+        else:
+            dic = ns_url_dic
+
+        if ns_url in dic:
+            assert dic[ns_url] == xsd_path
+        else:
+            dic[ns_url] = xsd_path
+    
+    if ns_url in xsd_url2path:
+        assert xsd_url2path[ns_url] == xsd_path
+    elif ns_url in local_xsd_url2path:
+        assert local_xsd_url2path[ns_url] == xsd_path
+
+
     return xsd_path, label_path
 
 def getTitleNsLabel(text):
@@ -212,10 +245,7 @@ def getTitleNsLabel(text):
         ns_url = ns_dic[v1[0]]
         label      = v1[1]
 
-        xsd_path, label_path = parseNsUrl(ns_url)
-        xsd_dic, label_dic = GetSchemaLabelDic(xsd_path, label_path)
-
-        title = getTitle(xsd_dic, label_dic, label)
+        title, type = getTitleType(ns_url, label)
 
     return title
 
@@ -294,7 +324,9 @@ def getNameSpace(path):
             break
     f.close()
 
-def GetSchemaLabelDic(xsd_path, label_path):
+def GetSchemaLabelDic(url):
+    xsd_path, label_path = parseNsUrl(url)
+
     xsd_dic = None
     label_dic = None
 
@@ -310,7 +342,7 @@ def GetSchemaLabelDic(xsd_path, label_path):
 
             xsd_tree = ET.parse(xsd_path)
             xsd_root = xsd_tree.getroot()
-            ReadSchema(xsd_root, xsd_dic)
+            ReadSchema(False, xsd_path, xsd_root, xsd_dic)
             xsd_dics[xsd_path] = xsd_dic
 
     if label_path is not None:
@@ -333,29 +365,42 @@ def GetSchemaLabelDic(xsd_path, label_path):
 
     return xsd_dic, label_dic
 
-def getTitle(xsd_dic, label_dic, label):
+def getTitleType(url, label):
+    xsd_dic, label_dic = GetSchemaLabelDic(url)
+
     title = "不明"
+    type  = "不明"
 
     ele = None
     if xsd_dic is not None and label in xsd_dic:
         ele = xsd_dic[label]
 
     if ele is not None:
+        type = ele.type
         if verboseLabel_role in ele.labels:
-            return ele.labels[verboseLabel_role]
+            return ele.labels[verboseLabel_role], type
         elif label_role in ele.labels:
-            return ele.labels[label_role]
+            return ele.labels[label_role], type
         elif terseLabel_role in ele.labels:
-            return ele.labels[terseLabel_role]
+            return ele.labels[terseLabel_role], type
 
-    if label + '_3' in label_dic:
-        title = label_dic[label + '_3']
-    elif label + '_2' in label_dic:
-        title = label_dic[label + '_2']
-    elif label in label_dic:
-        title = label_dic[label]
+    # 'http://xbrl.ifrs.org/taxonomy/2015-03-11/ifrs-full':
+    if url.endswith('/ifrs-full'):
+        for ifrs_url, dic in ifrs_dic.items():
+            if label in dic:
+                title, type = dic[label]
+                assert type in type_dic                
+                return title, type_dic[type]
 
-    return title
+    if label_dic is not None:
+        if label + '_3' in label_dic:
+            title = label_dic[label + '_3']
+        elif label + '_2' in label_dic:
+            title = label_dic[label + '_2']
+        elif label in label_dic:
+            title = label_dic[label]
+
+    return title, type
 
 ctx_names = {
     "FilingDateInstant":"提出日時点",
@@ -393,13 +438,37 @@ def dump(el, nest, logf):
         local_context_dic[id] = ctx
         return
 
-    xsd_path, label_path = parseNsUrl(url)
-
-    xsd_dic, label_dic = GetSchemaLabelDic(xsd_path, label_path)
+    title, type = getTitleType(url, label)
 
     assert el.tag[0] == '{'
-                
-    if xsd_dic is not None and label_dic is not None:
+
+    if title == "不明" or type == "不明":
+        if url in [
+            "http://www.xbrl.org/2003/instance",
+            "http://www.xbrl.org/2003/linkbase"
+            ]:
+            pass
+        else:
+            assert url in [ 
+                "http://xbrl.ifrs.org/taxonomy/2015-03-11/ifrs-full",
+                "http://xbrl.ifrs.org/taxonomy/2014-03-05/ifrs-full"
+            ]
+
+            key2 = ""
+            if title == "不明" or type == "不明":
+
+                for dics in [ local_label_dics, label_dics ]:
+                    for key, dic in dics.items():
+                        if label in dic:
+                            title = dic[label]
+                            key2 = key
+                            break
+
+            url_label = "[%s][%s][%s][%s]" % (title, url, label, key2)
+            if not url_label in skip_labels:
+                skip_labels.append(url_label)
+
+    if title != "不明" and type != "不明":
 
         context_ref = el.get("contextRef")
         assert context_ref is not None
@@ -420,13 +489,8 @@ def dump(el, nest, logf):
 
         context_txt = ctx.prefix + context_txt
 
-        ele = xsd_dic[label]
-        type = ele.type
-
         if type == "テキストブロック":
             text = "省略"
-
-        title = getTitle(xsd_dic, label_dic, label)
 
         if text is not None and 100 < len(text):
             text = "省略:" + text[:20]
@@ -446,23 +510,37 @@ def dump(el, nest, logf):
                             print("  ", x)
             else:
                 dup_dic[s] = [t]
-
-    else:
-        assert url in [ 
-            "http://www.xbrl.org/2003/instance",
-            "http://www.xbrl.org/2003/linkbase",
-            "http://xbrl.ifrs.org/taxonomy/2015-03-11/ifrs-full",
-            "http://xbrl.ifrs.org/taxonomy/2014-03-05/ifrs-full"
-        ]
-
-        if not label in skip_labels:
-            skip_labels.append(label)
     
     for child in el:
         dump(child, nest + 1, logf)
 
+ifrs_dic = {}
+def readIFRS():
+    f =  open(root_dir + '/data/IFRS/2d_ElementList_IFRS.csv', 'r', encoding='utf-8')
+    f.readline()
+    while True:
+        line = f.readline()
+        if line == '':
+            break
+        line = line.strip()
+        if line.startswith('http://xbrl.ifrs.org/'):
+            dic = {}
+            ifrs_dic[line] = dic
+
+        else:
+            v = line.split('\t')
+            dic[v[0]] = [ v[3], v[4] ]
+
+    f.close()
+
+
+readIFRS()
+
 logf =  open(root_dir + '/data/log.txt', 'w', encoding='utf-8')
 
+xsd_url2path = {}
+
+xbrl_idx = 0
 report_path = root_dir + '/data/EDINET/四半期報告書'
 for category_dir in Path(report_path).glob("*"):
     for p in category_dir.glob("*/*/XBRL/PublicDoc/*.xbrl"):
@@ -480,7 +558,9 @@ for category_dir in Path(report_path).glob("*"):
 
         #     continue
 
-        print("XBRL", path)
+        xbrl_idx += 1
+        if xbrl_idx % 100 == 0:
+            print("XBRL", xbrl_idx, path)
 
         cur_dir = os.path.dirname(path).replace('\\', '/')
 
@@ -491,15 +571,18 @@ for category_dir in Path(report_path).glob("*"):
         dup_dic = {}
         local_xsd_dics = {}
         local_label_dics = {}
+        local_ns_url_dic = {}
+        local_xsd_url2path = {}
 
         local_label_cnt = 0
         for local_xsd_path_obj in Path(cur_dir).glob("*.xsd"):
-            local_xsd_path = str(local_xsd_path_obj).replace('\\', '/')
+            local_xsd_path_org = str(local_xsd_path_obj)
+            local_xsd_path = local_xsd_path_org.replace('\\', '/')
 
             local_xsd_dic = {}
             local_xsd_dics[local_xsd_path] = local_xsd_dic
 
-            ReadSchema(ET.parse(local_xsd_path).getroot(), local_xsd_dic)
+            ReadSchema(True, local_xsd_path, ET.parse(local_xsd_path).getroot(), local_xsd_dic)
 
             local_label_path = local_xsd_path[:len(local_xsd_path) - 4] + "_lab.xml"
             if os.path.exists(local_label_path):
