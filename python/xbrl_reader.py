@@ -1,6 +1,8 @@
 import os
 import xml.etree.ElementTree as ET
 from pathlib import Path
+import json
+import codecs
 
 root_dir = os.path.dirname( os.path.abspath(__file__) ).replace('\\', '/') + '/..'
 
@@ -55,8 +57,10 @@ def ReadSchema(is_local, xsd_path, el, xsd_dic):
         ele.id   = el.get("id")
 
         type = el.get("type")
-        assert type in type_dic
-        ele.type = type_dic[ type ]
+        if type in type_dic:
+            ele.type = type_dic[ type ]
+        else:
+            ele.type = type
 
         xsd_dic[ele.name] = ele
 
@@ -152,7 +156,6 @@ def NoneStr(x):
 
 class Context:
     def __init__(self):
-        self.prefix = ""
         self.startDate = None
         self.endDate = None
         self.instant = None
@@ -225,6 +228,10 @@ def parseNsUrl(ns_url):
             label_path = root_dir + '/data/IFRS/ja/Japanese-Taxonomy-2014/full_ifrs/labels/lab_full_ifrs-ja_2014-03-05_rev_2015-03-06.xml'
         else:
             assert False
+
+    # elif ns_url == "http://www.xbrl.org/2003/instance":
+    #     xsd_path = root_dir + "/data/IFRS/xbrl-instance-2003-12-31.xsd"
+    #     label_path = None
 
     else:        
         assert ns_url in [ "http://www.xbrl.org/2003/instance", "http://www.xbrl.org/2003/linkbase" ]
@@ -374,7 +381,8 @@ def getTitleType(url, label):
     elif terseLabel_role in ele.labels:
         return ele.labels[terseLabel_role], type
 
-    assert False
+    assert url == 'http://www.xbrl.org/2003/instance'
+    return label, type
 
 ctx_names = {
     "FilingDateInstant":"提出日時点",
@@ -391,26 +399,65 @@ ctx_names = {
 }
 
 dup_dic = {}
+context_txt_dic = []
 
-def dump(el, nest, logf):
-    tab = '  ' * nest
+def dumpInst(dt, nest):
+    if dt is None:
+        print("")
+    tab = '    ' * nest
+    for k, v in dt.items():
+        if v is None:
+            pass
+        elif type(v) is str:
+            logf.write("%s%s : %s\n" % (tab, k, v))
+        else:
+            logf.write("%s%s\n" % (tab, k))
+            dumpInst(v, nest + 1)
+
+def dump(inst, el):
 
     id, url, label, text = parseElement(el)
 
     if url == "http://www.xbrl.org/2003/instance" and label == "context":
 
         ctx = Context()
-        k = id.find('_')
-        if k != -1:
-            s = id[:k]
-            if s in ctx_names:
-                ctx.prefix = ctx_names[s] + "."
 
         readContext(el, None, ctx)
+        assert len(ctx.dimensionNames) == len(ctx.members)
+        for d, m in zip(ctx.dimensionNames, ctx.members):
+            s = d + '|' + m
+            if not s in context_txt_dic:
+                context_txt_dic.append(s)
+
+        if len(ctx.dimensionNames) == 0:
+
+            assert id in ctx_names
+            ctx.time = ctx_names[id]
+            ctx.text = ctx.time
+
+        else:
+
+            ctx.time = ""
+            k = id.find('_')
+            if k != -1:
+                s = id[:k]
+                if s in ctx_names:
+                    ctx.time = ctx_names[s] + "."
+
+            assert ctx.time != ""
+
+            context_txt = ','.join(ctx.dimensionNames)
+
+            context_txt += ':' + ','.join(ctx.members)
+
+            ctx.text = ctx.time + context_txt
+
+
         local_context_dic[id] = ctx
         return
 
     if url in [ "http://www.xbrl.org/2003/instance", "http://www.xbrl.org/2003/linkbase" ]:
+    # if url in [ "http://www.xbrl.org/2003/linkbase" ]:
         pass
     else:
 
@@ -424,26 +471,40 @@ def dump(el, nest, logf):
         assert context_ref in local_context_dic
         ctx = local_context_dic[context_ref]
 
-        if len(ctx.dimensionNames) == 0:
-
-            assert context_ref in ctx_names
-            context_txt = ctx_names[context_ref]
-
-        else:
-            context_txt = ','.join(ctx.dimensionNames)
-
-        if len(ctx.members) != 0:
-            context_txt += ':' + ','.join(ctx.members)
-
-        context_txt = ctx.prefix + context_txt
+        context_txt = ctx.text
 
         if type == "テキストブロック":
             text = "省略"
 
         if text is not None and 100 < len(text):
-            text = "省略:" + text[:20]
+            text = "省略:" + text[:20].replace('\n', ' ')
 
-        logf.write("%stag : [%s][%s][%s][%s]\n" % (tab, type, context_txt, title, text))
+        if ctx.time in inst:
+            dt = inst[ctx.time]
+        else:
+            dt = {}
+            inst[ctx.time] = dt
+
+        if len(ctx.dimensionNames) != 0:
+            for dim, mem in zip(ctx.dimensionNames, ctx.members):
+                if dim in dt:
+                    ax = dt[dim]
+                else:
+                    ax = {}
+                    dt[dim] = ax
+
+                if mem in ax:
+                    dt = ax[mem]
+                else:
+                    dt = {}
+                    ax[mem] = dt
+
+        if title in dt:
+            assert dt[title] == text
+        else:
+            dt[title] = text
+        
+        # logf.write("[%s][%s][%s][%s]\n" % (type, context_txt, title, text))
 
         if context_txt != '':
             s = context_txt + '|' + title
@@ -452,37 +513,31 @@ def dump(el, nest, logf):
                 assert dup_dic[s] == t
             else:
                 dup_dic[s] = t
-    
+
     for child in el:
-        dump(child, nest + 1, logf)
+        dump(inst, child)
 
 logf =  open(root_dir + '/data/log.txt', 'w', encoding='utf-8')
 
+
 xsd_url2path = {}
+xbrl_xsd_dic = None
 
 xbrl_idx = 0
 report_path = root_dir + '/data/EDINET/四半期報告書'
 for category_dir in Path(report_path).glob("*"):
+    category_name = os.path.basename(str(category_dir))
+
     for p in category_dir.glob("*/*/XBRL/PublicDoc/*.xbrl"):
 
-        path = str(p)
-        basename = os.path.basename(path)
-        # if basename != 'ifrs-q3r-001_E00949-000_2016-12-31_01_2017-02-10.xbrl':
-        #     continue
-
-        # if not basename in [
-        #         "jpcrp040300-q1r-001_E31632-000_2018-06-30_01_2018-08-09.xbrl",
-        #         "jpcrp040300-q1r-001_E01669-000_2018-06-30_01_2018-08-10.xbrl",
-        #         "jpcrp040300-q1r-001_E01624-000_2018-06-30_01_2018-08-10.xbrl"
-        #     ]:
-
-        #     continue
+        xbrl_path = str(p)
+        basename = os.path.basename(xbrl_path)
 
         xbrl_idx += 1
         if xbrl_idx % 100 == 0:
-            print(xbrl_idx, path)
+            print(xbrl_idx, xbrl_path)
 
-        cur_dir = os.path.dirname(path).replace('\\', '/')
+        cur_dir = os.path.dirname(xbrl_path).replace('\\', '/')
 
         local_context_dic = {}
 
@@ -494,6 +549,10 @@ for category_dir in Path(report_path).glob("*"):
         local_xsd_url2path = {}
 
         local_label_cnt = 0
+
+        if xbrl_xsd_dic is None:
+            xbrl_xsd_dic = GetSchemaLabelDic("http://www.xbrl.org/2003/instance")
+
         for local_xsd_path_obj in Path(cur_dir).glob("*.xsd"):
             local_xsd_path_org = str(local_xsd_path_obj)
             local_xsd_path = local_xsd_path_org.replace('\\', '/')
@@ -514,10 +573,38 @@ for category_dir in Path(report_path).glob("*"):
         local_label_path_list = list( Path(cur_dir).glob("*_lab.xml") )
         assert len(local_label_path_list) == local_label_cnt
 
-        getNameSpace(path)
+        getNameSpace(xbrl_path)
 
-        tree = ET.parse(path)
+        tree = ET.parse(xbrl_path)
         root = tree.getroot()
-        dump(root, 0, logf)
+        inst = {}
+        dump(inst, root)
+
+        logf.write('\n')
+        logf.write('------------------------------------------------------------------------------------------\n')
+        logf.write('%s\n' % xbrl_path)
+
+        dumpInst(inst, 0)
+
+        # if not '提出日時点' in inst:
+        #     print(xbrl_path)
+        #     logf.close()
+        # edinet_code = inst['提出日時点']['EDINETコード、DEI']
+        # company_name = inst['提出日時点']['会社名、表紙']
+        # end_date = inst['提出日時点']['当会計期間終了日、DEI']
+        # json_dir = "%s/data/json/四半期報告書/%s/%s" % (root_dir, category_name, edinet_code)
+        # if not os.path.exists(json_dir):
+        #     os.makedirs(json_dir)
+
+        # json_path = "%s/%s-%s.json" % (json_dir, company_name, end_date)
+        # with codecs.open(json_path,'w','utf-8') as f:
+        #     json_str = json.dumps(inst, ensure_ascii=False)
+        #     f.write(json_str)
+
+
+
+logf.write("context_txt_dic --------------------------------------------------\n")
+for x in context_txt_dic:
+    logf.write(x + '\n')
 
 logf.close()
