@@ -360,35 +360,19 @@ def GetSchemaLabelDic(url):
 
     return xsd_dic
 
-ifrs_errs = []
-
 def getTitleType(url, label):
     xsd_dic = GetSchemaLabelDic(url)
 
-    ele = None
-    if xsd_dic is not None and label in xsd_dic:
-        ele = xsd_dic[label]
+    assert xsd_dic is not None and label in xsd_dic
+    ele = xsd_dic[label]
 
-    if ele is not None:
-        type = ele.type
-        if verboseLabel_role in ele.labels:
-            return ele.labels[verboseLabel_role], type
-        elif label_role in ele.labels:
-            return ele.labels[label_role], type
-        elif terseLabel_role in ele.labels:
-            return ele.labels[terseLabel_role], type
-
-    s = label + ':' + url
-    if not s in ifrs_errs:
-        print(s)
-        ifrs_errs.append(s)
-    # 'http://xbrl.ifrs.org/taxonomy/2015-03-11/ifrs-full':
-    assert url.endswith('/ifrs-full')
-    for ifrs_url, dic in ifrs_dic.items():
-        if label in dic:
-            title, type = dic[label]
-            assert type in type_dic                
-            return title, type_dic[type]
+    type = ele.type
+    if verboseLabel_role in ele.labels:
+        return ele.labels[verboseLabel_role], type
+    elif label_role in ele.labels:
+        return ele.labels[label_role], type
+    elif terseLabel_role in ele.labels:
+        return ele.labels[terseLabel_role], type
 
     assert False
 
@@ -472,28 +456,6 @@ def dump(el, nest, logf):
     for child in el:
         dump(child, nest + 1, logf)
 
-ifrs_dic = {}
-def readIFRS():
-    f =  open(root_dir + '/data/EDINET/taxonomy/full_ifrs.csv', 'r', encoding='utf-8')
-    f.readline()
-    while True:
-        line = f.readline()
-        if line == '':
-            break
-        line = line.strip()
-        if line.startswith('http://xbrl.ifrs.org/'):
-            dic = {}
-            ifrs_dic[line] = dic
-
-        else:
-            v = line.split('\t')
-            dic[v[0]] = [ v[3], v[4] ]
-
-    f.close()
-
-
-readIFRS()
-
 logf =  open(root_dir + '/data/log.txt', 'w', encoding='utf-8')
 
 xsd_url2path = {}
@@ -559,7 +521,3 @@ for category_dir in Path(report_path).glob("*"):
         dump(root, 0, logf)
 
 logf.close()
-
-print('ifrs_errs --------------------------------------------------')
-for x in ifrs_errs:
-    print(x)
