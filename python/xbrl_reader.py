@@ -229,9 +229,9 @@ def parseNsUrl(ns_url):
         else:
             assert False
 
-    # elif ns_url == "http://www.xbrl.org/2003/instance":
-    #     xsd_path = root_dir + "/data/IFRS/xbrl-instance-2003-12-31.xsd"
-    #     label_path = None
+    elif ns_url == "http://www.xbrl.org/2003/instance":
+        xsd_path = root_dir + "/data/IFRS/xbrl-instance-2003-12-31.xsd"
+        label_path = None
 
     else:        
         assert ns_url in [ "http://www.xbrl.org/2003/instance", "http://www.xbrl.org/2003/linkbase" ]
@@ -414,7 +414,7 @@ def dumpInst(dt, nest):
             logf.write("%s%s\n" % (tab, k))
             dumpInst(v, nest + 1)
 
-def dump(inst, el):
+def dumpSub(inst, el):
 
     id, url, label, text = parseElement(el)
 
@@ -454,10 +454,10 @@ def dump(inst, el):
 
 
         local_context_dic[id] = ctx
-        return
+        return False
 
-    if url in [ "http://www.xbrl.org/2003/instance", "http://www.xbrl.org/2003/linkbase" ]:
-    # if url in [ "http://www.xbrl.org/2003/linkbase" ]:
+    # if url in [ "http://www.xbrl.org/2003/instance", "http://www.xbrl.org/2003/linkbase" ]:
+    if url in [ "http://www.xbrl.org/2003/linkbase" ]:
         pass
     else:
 
@@ -466,7 +466,9 @@ def dump(inst, el):
         assert el.tag[0] == '{'
 
         context_ref = el.get("contextRef")
-        assert context_ref is not None
+        # assert context_ref is not None
+        if type is None or context_ref is None:
+            return True
 
         assert context_ref in local_context_dic
         ctx = local_context_dic[context_ref]
@@ -514,8 +516,14 @@ def dump(inst, el):
             else:
                 dup_dic[s] = t
 
-    for child in el:
-        dump(inst, child)
+    return True
+
+def dump(inst, el):
+    go_down = dumpSub(inst, el)
+
+    if go_down:
+        for child in el:
+            dump(inst, child)
 
 logf =  open(root_dir + '/data/log.txt', 'w', encoding='utf-8')
 
@@ -528,78 +536,84 @@ report_path = root_dir + '/data/EDINET/四半期報告書'
 for category_dir in Path(report_path).glob("*"):
     category_name = os.path.basename(str(category_dir))
 
-    for p in category_dir.glob("*/*/XBRL/PublicDoc/*.xbrl"):
+    for public_doc in category_dir.glob("*/*/XBRL/PublicDoc"):
+        xbrl_list = list( public_doc.glob("*.xbrl") )
+        for p in xbrl_list:
 
-        xbrl_path = str(p)
-        basename = os.path.basename(xbrl_path)
+            xbrl_path = str(p)
+            basename = os.path.basename(xbrl_path)
+            if basename.startswith('ifrs-'):
+                assert len(xbrl_list) == 2
+                continue
+            # if basename != 'ifrs-q3r-001_E00949-000_2016-12-31_01_2017-02-10.xbrl':
+            #     continue
 
-        xbrl_idx += 1
-        if xbrl_idx % 100 == 0:
-            print(xbrl_idx, xbrl_path)
+            xbrl_idx += 1
+            if xbrl_idx % 100 == 0:
+                print(xbrl_idx, xbrl_path)
 
-        cur_dir = os.path.dirname(xbrl_path).replace('\\', '/')
+            cur_dir = os.path.dirname(xbrl_path).replace('\\', '/')
 
-        local_context_dic = {}
+            local_context_dic = {}
 
-        ns_dic = {}
-        link_labels = {}
-        dup_dic = {}
-        local_xsd_dics = {}
-        local_ns_url_dic = {}
-        local_xsd_url2path = {}
+            ns_dic = {}
+            link_labels = {}
+            dup_dic = {}
+            local_xsd_dics = {}
+            local_ns_url_dic = {}
+            local_xsd_url2path = {}
 
-        local_label_cnt = 0
+            local_label_cnt = 0
 
-        if xbrl_xsd_dic is None:
-            xbrl_xsd_dic = GetSchemaLabelDic("http://www.xbrl.org/2003/instance")
+            if xbrl_xsd_dic is None:
+                xbrl_xsd_dic = GetSchemaLabelDic("http://www.xbrl.org/2003/instance")
 
-        for local_xsd_path_obj in Path(cur_dir).glob("*.xsd"):
-            local_xsd_path_org = str(local_xsd_path_obj)
-            local_xsd_path = local_xsd_path_org.replace('\\', '/')
+            for local_xsd_path_obj in Path(cur_dir).glob("*.xsd"):
+                local_xsd_path_org = str(local_xsd_path_obj)
+                local_xsd_path = local_xsd_path_org.replace('\\', '/')
 
-            local_xsd_dic = {}
-            local_xsd_dics[local_xsd_path] = local_xsd_dic
+                local_xsd_dic = {}
+                local_xsd_dics[local_xsd_path] = local_xsd_dic
 
-            ReadSchema(True, local_xsd_path, ET.parse(local_xsd_path).getroot(), local_xsd_dic)
+                ReadSchema(True, local_xsd_path, ET.parse(local_xsd_path).getroot(), local_xsd_dic)
 
-            local_label_path = local_xsd_path[:len(local_xsd_path) - 4] + "_lab.xml"
-            if os.path.exists(local_label_path):
+                local_label_path = local_xsd_path[:len(local_xsd_path) - 4] + "_lab.xml"
+                if os.path.exists(local_label_path):
 
-                resource_dic = {}
-                loc_dic = {}
-                ReadLabel(ET.parse(str(local_label_path)).getroot(), local_xsd_dic, loc_dic, resource_dic)
-                local_label_cnt += 1
+                    resource_dic = {}
+                    loc_dic = {}
+                    ReadLabel(ET.parse(str(local_label_path)).getroot(), local_xsd_dic, loc_dic, resource_dic)
+                    local_label_cnt += 1
 
-        local_label_path_list = list( Path(cur_dir).glob("*_lab.xml") )
-        assert len(local_label_path_list) == local_label_cnt
+            local_label_path_list = list( Path(cur_dir).glob("*_lab.xml") )
+            assert len(local_label_path_list) == local_label_cnt
 
-        getNameSpace(xbrl_path)
+            getNameSpace(xbrl_path)
 
-        tree = ET.parse(xbrl_path)
-        root = tree.getroot()
-        inst = {}
-        dump(inst, root)
+            tree = ET.parse(xbrl_path)
+            root = tree.getroot()
+            inst = {}
+            dump(inst, root)
 
-        logf.write('\n')
-        logf.write('------------------------------------------------------------------------------------------\n')
-        logf.write('%s\n' % xbrl_path)
+            logf.write('\n')
+            logf.write('------------------------------------------------------------------------------------------\n')
+            logf.write('%s\n' % xbrl_path)
 
-        dumpInst(inst, 0)
+            dumpInst(inst, 0)
 
-        # if not '提出日時点' in inst:
-        #     print(xbrl_path)
-        #     logf.close()
-        # edinet_code = inst['提出日時点']['EDINETコード、DEI']
-        # company_name = inst['提出日時点']['会社名、表紙']
-        # end_date = inst['提出日時点']['当会計期間終了日、DEI']
-        # json_dir = "%s/data/json/四半期報告書/%s/%s" % (root_dir, category_name, edinet_code)
-        # if not os.path.exists(json_dir):
-        #     os.makedirs(json_dir)
+            if not '提出日時点' in inst:
+                print(xbrl_path)
+                logf.close()
+            edinet_code = inst['提出日時点']['EDINETコード、DEI']
+            end_date = inst['提出日時点']['当会計期間終了日、DEI']
+            json_dir = "%s/data/json/四半期報告書/%s/%s" % (root_dir, category_name, edinet_code)
+            if not os.path.exists(json_dir):
+                os.makedirs(json_dir)
 
-        # json_path = "%s/%s-%s.json" % (json_dir, company_name, end_date)
-        # with codecs.open(json_path,'w','utf-8') as f:
-        #     json_str = json.dumps(inst, ensure_ascii=False)
-        #     f.write(json_str)
+            json_path = "%s/%s-%s.json" % (json_dir, edinet_code, end_date)
+            with codecs.open(json_path,'w','utf-8') as f:
+                json_str = json.dumps(inst, ensure_ascii=False)
+                f.write(json_str)
 
 
 
