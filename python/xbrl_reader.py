@@ -38,16 +38,43 @@ def splitUrlLabel(text):
     
     return None, None
 
+def normUrl(url):
+    if not url.endswith('.xsd') and url.startswith('http://disclosure.edinet-fsa.go.jp/taxonomy/'):
+        v = url.split('/')
+
+        name_space = v[4]
+        yymmdd     = v[5]
+        name_cor   = v[6]
+
+        # '/2013-08-31/タクソノミ/taxonomy/jpdei/2013-08-31/jpdei_cor_2013-08-31.xsd'
+
+        file_name = name_cor + "_" + yymmdd + '.xsd'
+        url2 = '/'.join(v[:6]) + '/' + file_name
+
+        return url2
+
+    elif url in [
+         'http://xbrl.ifrs.org/taxonomy/2015-03-11/ifrs-full',
+         'http://xbrl.ifrs.org/taxonomy/2014-03-05/ifrs-full',
+         'http://xbrl.ifrs.org/taxonomy/2014-03-05/full_ifrs/full_ifrs-cor_2014-03-05.xsd'
+        ]:
+        return 'http://xbrl.ifrs.org/taxonomy/2015-03-11/full_ifrs/full_ifrs-cor_2015-03-11.xsd'
+
+    else:
+        return url
 
 def ReadSchema(is_local, xsd_path, el, xsd_dic):
     url, label = splitUrlLabel(el.tag)
 
     if label == 'schema':
         target_ns = el.get('targetNamespace')
+        target_ns = normUrl(target_ns)
         if is_local:
             local_xsd_url2path[target_ns] = xsd_path
+            local_xsd_dics[target_ns] = xsd_dic
         else:
             xsd_url2path[target_ns] = xsd_path
+            xsd_dics[target_ns] = xsd_dic
 
         attr = getAttribs(el)
     elif label == "element":
@@ -184,7 +211,7 @@ class Element:
         elif terseLabel_role in self.labels:
             return self.labels[terseLabel_role]
         else:
-            assert self.url == 'http://www.xbrl.org/2003/instance'
+            assert self.url in ['http://www.xbrl.org/2003/instance', 'http://www.w3.org/2001/XMLSchema']
             return self.name
 
 
@@ -367,16 +394,17 @@ def getNameSpace(path):
     f.close()
 
 def GetSchemaLabelDic(url):
+    url = normUrl(url)
     xsd_path, label_path = parseNsUrl(url)
 
     xsd_dic = None
 
     if xsd_path is not None:
-        if xsd_path.startswith(cur_dir):
-            xsd_dic = local_xsd_dics[xsd_path]
+        if url in local_xsd_dics:
+            xsd_dic = local_xsd_dics[url]
 
-        elif xsd_path in xsd_dics:
-            xsd_dic = xsd_dics[xsd_path]
+        elif url in xsd_dics:
+            xsd_dic = xsd_dics[url]
 
         elif os.path.exists(xsd_path):
             xsd_dic = {}
@@ -384,7 +412,7 @@ def GetSchemaLabelDic(url):
             xsd_tree = ET.parse(xsd_path)
             xsd_root = xsd_tree.getroot()
             ReadSchema(False, xsd_path, xsd_root, xsd_dic)
-            xsd_dics[xsd_path] = xsd_dic
+            assert xsd_dics[url] == xsd_dic
 
     if label_path is not None:
         if label_path.startswith(cur_dir):
@@ -617,8 +645,7 @@ def readCalcSub(el, xsd_dic, locs, arcs):
                     v = attr2['href'].split('#')
                     if v[0].startswith('http://'):
                         if v[0] in xsd_url2path:
-                            xsd_path = xsd_url2path[ v[0] ]
-                            xsd_dic2 = xsd_dics[ xsd_path ]
+                            xsd_dic2 = xsd_dics[ v[0] ]
                         else:
                             xsd_dic2 = GetSchemaLabelDic(v[0])
 
@@ -644,7 +671,6 @@ def readCalc():
         xsd_dic = {}
 
         ReadSchema(False, xsd_path, ET.parse(xsd_path).getroot(), xsd_dic)
-        xsd_dics[xsd_path] = xsd_dic
 
         for xml_path in Path(xsd_base).glob('r/*/*.xml'):
             xml_path = str(xml_path).replace('\\', '/')
@@ -697,7 +723,6 @@ for category_dir in Path(report_path).glob("*"):
                 local_xsd_path = local_xsd_path_org.replace('\\', '/')
 
                 local_xsd_dic = {}
-                local_xsd_dics[local_xsd_path] = local_xsd_dic
 
                 ReadSchema(True, local_xsd_path, ET.parse(local_xsd_path).getroot(), local_xsd_dic)
 
