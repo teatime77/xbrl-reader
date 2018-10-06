@@ -387,15 +387,21 @@ def getTitleType(url, label):
 ctx_names = {
     "FilingDateInstant":"提出日時点",
     "CurrentYTDDuration":"当四半期累計期間連結期間",
-    "Prior1YearDuration":"前期連結期間",
     "CurrentQuarterInstant":"当四半期会計期間連結時点",
-    "Prior1YearInstant":"前期連結時点",
     "CurrentQuarterDuration":"当四半期会計期間連結期間",
     "Prior1YTDDuration":"前年度同四半期累計期間連結期間",
     "Prior1QuarterInstant":"前年度同四半期会計期間連結時点",
     "Prior1QuarterDuration":"前年度同四半期会計期間連結期間",
-    "Prior2YearInstant":"前々期連結時点",
-    "CurrentYearInstant":"当期連結時点"
+    "CurrentYearInstant" :"当期連結時点",
+    "CurrentYearDuration":"当期連結期間",
+    "Prior1YearInstant"  :"前期連結時点",
+    "Prior1YearDuration" :"前期連結期間",
+    "Prior2YearInstant"  :"前々期連結時点",
+    "Prior2YearDuration" :"前々期連結期間",
+    "Prior3YearInstant"  :"3期前連結時点",
+    "Prior3YearDuration" :"3期前連結期間",
+    "Prior4YearInstant"  :"4期前連結時点",
+    "Prior4YearDuration" :"4期前連結期間",
 }
 
 dup_dic = {}
@@ -414,6 +420,8 @@ def dumpInst(dt, nest):
             logf.write("%s%s\n" % (tab, k))
             dumpInst(v, nest + 1)
 
+ctx_names_err = []
+
 def dumpSub(inst, el):
 
     id, url, label, text = parseElement(el)
@@ -431,8 +439,14 @@ def dumpSub(inst, el):
 
         if len(ctx.dimensionNames) == 0:
 
-            assert id in ctx_names
-            ctx.time = ctx_names[id]
+            if id in ctx_names:
+                ctx.time = ctx_names[id]
+            else:
+                ctx.time = id
+                if not id in ctx_names_err:
+                   ctx_names_err.append(id) 
+
+
             ctx.text = ctx.time
 
         else:
@@ -444,7 +458,10 @@ def dumpSub(inst, el):
                 if s in ctx_names:
                     ctx.time = ctx_names[s] + "."
 
-            assert ctx.time != ""
+            if ctx.time == "":
+                ctx.time = s
+                if not s in ctx_names_err:
+                   ctx_names_err.append(s) 
 
             context_txt = ','.join(ctx.dimensionNames)
 
@@ -506,7 +523,7 @@ def dumpSub(inst, el):
         else:
             dt[title] = text
         
-        # logf.write("[%s][%s][%s][%s]\n" % (type, context_txt, title, text))
+        logf.write("[%s][%s][%s][%s]\n" % (type, context_txt, title, text))
 
         if context_txt != '':
             s = context_txt + '|' + title
@@ -545,12 +562,13 @@ for category_dir in Path(report_path).glob("*"):
             if basename.startswith('ifrs-'):
                 assert len(xbrl_list) == 2
                 continue
-            # if basename != 'ifrs-q3r-001_E00949-000_2016-12-31_01_2017-02-10.xbrl':
+
+            # if basename != 'jpcrp030000-asr-001_E00006-000_2016-05-31_01_2016-08-23.xbrl':
             #     continue
 
             xbrl_idx += 1
-            if xbrl_idx % 100 == 0:
-                print(xbrl_idx, xbrl_path)
+            # if xbrl_idx % 100 == 0:
+            print(xbrl_idx, xbrl_path)
 
             cur_dir = os.path.dirname(xbrl_path).replace('\\', '/')
 
@@ -620,5 +638,12 @@ for category_dir in Path(report_path).glob("*"):
 logf.write("context_txt_dic --------------------------------------------------\n")
 for x in context_txt_dic:
     logf.write(x + '\n')
+
+
+logf.write("ctx_names_err --------------------------------------------------\n")
+for x in ctx_names_err:
+    logf.write(x + '\n')
+
+
 
 logf.close()
