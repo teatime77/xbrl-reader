@@ -171,6 +171,15 @@ class Element:
         self.id   = None
         self.type = None
         self.labels = {}
+        self.calcTo = []
+        self.calcFrom = []
+
+class Calc:
+    def __init__(self, to_el, role, order, weight):
+        self.to = to_el
+        self.role = role
+        self.order = order
+        self.weight = weight
 
 taxonomy_tmpl = root_dir + '/data/EDINET/taxonomy/%s/タクソノミ/taxonomy/'
 
@@ -188,7 +197,11 @@ def parseNsUrl(ns_url):
 
         # '/2013-08-31/タクソノミ/taxonomy/jpdei/2013-08-31/jpdei_cor_2013-08-31.xsd'
 
-        xsd_path = (taxonomy_tmpl % yymmdd) + name_space + '/' + yymmdd + '/' + name_cor + "_" + yymmdd + '.xsd'
+        if ns_url.endswith('.xsd'):
+            file_name = os.path.basename(ns_url)
+        else:
+            file_name = name_cor + "_" + yymmdd + '.xsd'
+        xsd_path = (taxonomy_tmpl % yymmdd) + name_space + '/' + yymmdd + '/' + file_name
         label_path = (taxonomy_tmpl % yymmdd) + name_space + '/' + yymmdd + '/label/' + name_space + "_" + yymmdd + '_lab.xml'
 
     elif ns_url.startswith("http://disclosure.edinet-fsa.go.jp/"):
@@ -204,6 +217,17 @@ def parseNsUrl(ns_url):
         label_path = base_path + '_lab.xml'
 
     elif ns_url.startswith("http://xbrl.ifrs.org/taxonomy/"):
+        if ns_url == 'http://xbrl.ifrs.org/taxonomy/2015-03-11/full_ifrs/full_ifrs-cor_2015-03-11.xsd':
+            ns_url = 'http://xbrl.ifrs.org/taxonomy/2015-03-11/ifrs-full'
+        elif ns_url == 'http://xbrl.ifrs.org/taxonomy/2014-03-05/full_ifrs/full_ifrs-cor_2014-03-05.xsd':
+            ns_url = 'http://xbrl.ifrs.org/taxonomy/2014-03-05/ifrs-full'
+
+        if not ns_url in [ 
+            'http://xbrl.ifrs.org/taxonomy/2015-03-11/ifrs-full', 
+            'http://xbrl.ifrs.org/taxonomy/2014-03-05/ifrs-full'            
+            ]:
+            print(ns_url)
+
 
         assert ns_url in [ 
             'http://xbrl.ifrs.org/taxonomy/2015-03-11/ifrs-full', 
@@ -544,12 +568,88 @@ def dump(inst, el):
 
 logf =  open(root_dir + '/data/log.txt', 'w', encoding='utf-8')
 
-
 xsd_url2path = {}
 xbrl_xsd_dic = None
 
 xbrl_idx = 0
 report_path = root_dir + '/data/EDINET/四半期報告書'
+
+def readCalcArcs(xsd_dic, locs, arcs):
+    for el2 in arcs:
+        attr2 = getAttribs(el2)
+        role = attr2['arcrole']
+        if role == 'http://www.xbrl.org/2003/arcrole/summation-item':
+            order = el2.get('order')
+            weight = el2.get('weight')
+            assert order is not None and weight is not None
+
+            from_label = attr2['from'] 
+            to_label = attr2['to'] 
+            assert from_label is not None and to_label is not None
+
+            from_el = locs[from_label] 
+            if to_label in locs:
+                to_el = locs[to_label] 
+            else:
+                to_el = xsd_dic[to_label]
+            assert from_el is not None and to_el is not None
+
+            calc = Calc(to_el, role, order, weight)
+            from_el.calcTo.append(calc)
+            to_el.calcFrom.append( Calc(from_el, role, order, weight) )
+
+def readCalcSub(el, xsd_dic, locs, arcs):
+    url, label = splitUrlLabel(el.tag)
+
+    if label == 'calculationLink':
+        attr = getAttribs(el)
+        for el2 in el:
+            url2, label2 = splitUrlLabel(el2.tag)
+            if label2 in [ 'loc', 'calculationArc' ]: 
+                if label2 == 'loc': 
+                    attr2 = getAttribs(el2)
+                    v = attr2['href'].split('#')
+                    if v[0].startswith('http://'):
+                        if v[0] in xsd_url2path:
+                            xsd_path = xsd_url2path[ v[0] ]
+                            xsd_dic2 = xsd_dics[ xsd_path ]
+                        else:
+                            xsd_dic2 = GetSchemaLabelDic(v[0])
+
+                    else:
+                        xsd_dic2 = xsd_dic
+                    assert v[1] in xsd_dic2
+                    locs[ attr2['label'] ] = xsd_dic2[ v[1] ]
+
+                elif label2 == 'calculationArc':
+                    arcs.append(el2)
+
+    else:
+        for child in el:
+            readCalcSub(child, xsd_dic, locs, arcs)
+
+def readCalc():
+    name_space = 'jppfs'
+    name_cor = 'jppfs_cor'
+    for yymmdd in [ '2018-02-28' ]:
+        xsd_base = (taxonomy_tmpl % yymmdd) + name_space + '/' + yymmdd
+        xsd_path = xsd_base + '/' + name_cor + "_" + yymmdd + '.xsd'
+
+        xsd_dic = {}
+
+        ReadSchema(False, xsd_path, ET.parse(xsd_path).getroot(), xsd_dic)
+        xsd_dics[xsd_path] = xsd_dic
+
+        for xml_path in Path(xsd_base).glob('r/*/*.xml'):
+            xml_path = str(xml_path).replace('\\', '/')
+            locs = {}
+            arcs = []
+            readCalcSub(ET.parse(xml_path).getroot(), xsd_dic, locs, arcs)
+            readCalcArcs(xsd_dic, locs, arcs)
+
+readCalc()
+
+
 for category_dir in Path(report_path).glob("*"):
     category_name = os.path.basename(str(category_dir))
 
@@ -563,7 +663,7 @@ for category_dir in Path(report_path).glob("*"):
                 assert len(xbrl_list) == 2
                 continue
 
-            # if basename != 'jpcrp030000-asr-001_E00006-000_2016-05-31_01_2016-08-23.xbrl':
+            # if basename != 'jpcrp040300-q2r-001_E03369-000_2016-09-30_01_2016-11-14.xbrl':
             #     continue
 
             xbrl_idx += 1
@@ -602,6 +702,13 @@ for category_dir in Path(report_path).glob("*"):
                     loc_dic = {}
                     ReadLabel(ET.parse(str(local_label_path)).getroot(), local_xsd_dic, loc_dic, resource_dic)
                     local_label_cnt += 1
+
+                local_cal_path = local_xsd_path[:-4] + '_cal.xml'
+                if os.path.exists(local_cal_path):
+                    locs = {}
+                    arcs = []
+                    readCalcSub(ET.parse(local_cal_path).getroot(), local_xsd_dic, locs, arcs)
+                    readCalcArcs(local_xsd_dic, locs, arcs)
 
             local_label_path_list = list( Path(cur_dir).glob("*_lab.xml") )
             assert len(local_label_path_list) == local_label_cnt
