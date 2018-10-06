@@ -450,8 +450,6 @@ def dumpInst(dt, nest):
             logf2.write("%s%s\n" % (tab, k))
             dumpInst(v, nest + 1)
 
-ctx_names_err = []
-
 def dumpSub(inst, el):
 
     id, url, label, text = parseElement(el)
@@ -469,13 +467,8 @@ def dumpSub(inst, el):
 
         if len(ctx.dimensionNames) == 0:
 
-            if id in ctx_names:
-                ctx.time = ctx_names[id]
-            else:
-                ctx.time = id
-                if not id in ctx_names_err:
-                   ctx_names_err.append(id) 
-
+            assert id in ctx_names
+            ctx.time = ctx_names[id]
 
             ctx.text = ctx.time
 
@@ -483,15 +476,10 @@ def dumpSub(inst, el):
 
             ctx.time = ""
             k = id.find('_')
-            if k != -1:
-                s = id[:k]
-                if s in ctx_names:
-                    ctx.time = ctx_names[s] + "."
-
-            if ctx.time == "":
-                ctx.time = s
-                if not s in ctx_names_err:
-                   ctx_names_err.append(s) 
+            assert k != -1
+            s = id[:k]
+            assert s in ctx_names
+            ctx.time = ctx_names[s] + "."
 
             context_txt = ','.join(ctx.dimensionNames)
 
@@ -685,8 +673,8 @@ for category_dir in Path(report_path).glob("*"):
             #     continue
 
             xbrl_idx += 1
-            # if xbrl_idx % 100 == 0:
-            print(xbrl_idx, xbrl_path)
+            if xbrl_idx % 100 == 0:
+                print(xbrl_idx, xbrl_path)
 
             cur_dir = os.path.dirname(xbrl_path).replace('\\', '/')
 
@@ -763,11 +751,6 @@ for category_dir in Path(report_path).glob("*"):
 
 logf.write("context_txt_dic --------------------------------------------------\n")
 for x in context_txt_dic:
-    logf.write(x + '\n')
-
-
-logf.write("ctx_names_err --------------------------------------------------\n")
-for x in ctx_names_err:
     logf.write(x + '\n')
 
 logf.close()
