@@ -53,6 +53,7 @@ def ReadSchema(is_local, xsd_path, el, xsd_dic):
     elif label == "element":
 
         ele = Element()
+        ele.url  = url
         ele.name = el.get("name")
         ele.id   = el.get("id")
 
@@ -167,12 +168,25 @@ class Context:
 
 class Element:
     def __init__(self):
+        self.url  = None
         self.name = None
         self.id   = None
         self.type = None
         self.labels = {}
         self.calcTo = []
         self.calcFrom = []
+
+    def getTitle(self):
+        if verboseLabel_role in self.labels:
+            return self.labels[verboseLabel_role]
+        elif label_role in self.labels:
+            return self.labels[label_role]
+        elif terseLabel_role in self.labels:
+            return self.labels[terseLabel_role]
+        else:
+            assert self.url == 'http://www.xbrl.org/2003/instance'
+            return self.name
+
 
 class Calc:
     def __init__(self, to_el, role, order, weight):
@@ -288,7 +302,8 @@ def getTitleNsLabel(text):
     ns_url = ns_dic[v1[0]]
     label      = v1[1]
 
-    title, type = getTitleType(ns_url, label)
+    ele = getElement(ns_url, label)
+    title = ele.getTitle()
 
     return title
 
@@ -391,22 +406,13 @@ def GetSchemaLabelDic(url):
 
     return xsd_dic
 
-def getTitleType(url, label):
+def getElement(url, label):
     xsd_dic = GetSchemaLabelDic(url)
 
     assert xsd_dic is not None and label in xsd_dic
     ele = xsd_dic[label]
 
-    type = ele.type
-    if verboseLabel_role in ele.labels:
-        return ele.labels[verboseLabel_role], type
-    elif label_role in ele.labels:
-        return ele.labels[label_role], type
-    elif terseLabel_role in ele.labels:
-        return ele.labels[terseLabel_role], type
-
-    assert url == 'http://www.xbrl.org/2003/instance'
-    return label, type
+    return ele
 
 ctx_names = {
     "FilingDateInstant":"提出日時点",
@@ -439,9 +445,9 @@ def dumpInst(dt, nest):
         if v is None:
             pass
         elif type(v) is str:
-            logf.write("%s%s : %s\n" % (tab, k, v))
+            logf2.write("%s%s : %s\n" % (tab, k, v))
         else:
-            logf.write("%s%s\n" % (tab, k))
+            logf2.write("%s%s\n" % (tab, k))
             dumpInst(v, nest + 1)
 
 ctx_names_err = []
@@ -502,13 +508,13 @@ def dumpSub(inst, el):
         pass
     else:
 
-        title, type = getTitleType(url, label)
+        ele = getElement(url, label)
 
         assert el.tag[0] == '{'
 
         context_ref = el.get("contextRef")
         # assert context_ref is not None
-        if type is None or context_ref is None:
+        if ele.type is None or context_ref is None:
             return True
 
         assert context_ref in local_context_dic
@@ -516,11 +522,19 @@ def dumpSub(inst, el):
 
         context_txt = ctx.text
 
-        if type == "テキストブロック":
+        if ele.type == "テキストブロック":
             text = "省略"
 
         if text is not None and 100 < len(text):
             text = "省略:" + text[:20].replace('\n', ' ')
+
+        if len(ele.calcFrom) != 0:
+            
+            s = '↑' + '|'.join([ x.to.getTitle() for x in ele.calcFrom ])
+            if text is None:
+                text = s
+            else:
+                text += s
 
         if ctx.time in inst:
             dt = inst[ctx.time]
@@ -542,12 +556,13 @@ def dumpSub(inst, el):
                     dt = {}
                     ax[mem] = dt
 
+        title = ele.getTitle()
         if title in dt:
             assert dt[title] == text
         else:
             dt[title] = text
         
-        logf.write("[%s][%s][%s][%s]\n" % (type, context_txt, title, text))
+        logf.write("[%s][%s][%s][%s]\n" % (ele.type, context_txt, title, text))
 
         if context_txt != '':
             s = context_txt + '|' + title
@@ -567,6 +582,7 @@ def dump(inst, el):
             dump(inst, child)
 
 logf =  open(root_dir + '/data/log.txt', 'w', encoding='utf-8')
+logf2 =  open(root_dir + '/data/log2.txt', 'w', encoding='utf-8')
 
 xsd_url2path = {}
 xbrl_xsd_dic = None
@@ -596,7 +612,9 @@ def readCalcArcs(xsd_dic, locs, arcs):
 
             calc = Calc(to_el, role, order, weight)
             from_el.calcTo.append(calc)
-            to_el.calcFrom.append( Calc(from_el, role, order, weight) )
+
+            if not from_el in [ x.to for x in to_el.calcFrom ]:
+                to_el.calcFrom.append( Calc(from_el, role, order, weight) )
 
 def readCalcSub(el, xsd_dic, locs, arcs):
     url, label = splitUrlLabel(el.tag)
@@ -720,9 +738,10 @@ for category_dir in Path(report_path).glob("*"):
             inst = {}
             dump(inst, root)
 
-            logf.write('\n')
-            logf.write('------------------------------------------------------------------------------------------\n')
-            logf.write('%s\n' % xbrl_path)
+            for f in [ logf, logf2 ]:
+                f.write('\n')
+                f.write('------------------------------------------------------------------------------------------\n')
+                f.write('%s\n' % xbrl_path)
 
             dumpInst(inst, 0)
 
@@ -751,6 +770,5 @@ logf.write("ctx_names_err --------------------------------------------------\n")
 for x in ctx_names_err:
     logf.write(x + '\n')
 
-
-
 logf.close()
+logf2.close()
