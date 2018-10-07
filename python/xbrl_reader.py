@@ -182,16 +182,35 @@ def NoneStr(x):
     else:
         return x
 
+class Item:
+    def __init__(self, ele, text):
+        self.element = ele
+        self.text    = text
+
 class Context:
     def __init__(self):
+        self.time       = None
         self.startDate = None
         self.endDate = None
         self.instant = None
         self.dimensionNames  = []
         self.members = []
+        self.text = None
 
     def toString(self):
         return "%s:%s:%s:%s:%s" % (NoneStr(self.startDate), NoneStr(self.endDate), NoneStr(self.instant), ','.join(self.dimensionNames), ','.join(self.members))
+
+
+class ContextNode:
+    def __init__(self):
+        self.time       = None
+        self.startDate = None
+        self.endDate = None
+        self.instant = None
+        self.dimensions  = {}
+        self.contexts = []
+        self.values  = []
+        self.text = None
 
 class Element:
     def __init__(self):
@@ -368,6 +387,68 @@ def readContext(el, parent, ctx):
     for child in el:
         readContext(child, label, ctx)
 
+def makeContext(el, id):
+    ctx = Context()
+
+    readContext(el, None, ctx)
+    assert len(ctx.dimensionNames) == len(ctx.members)
+    for d, m in zip(ctx.dimensionNames, ctx.members):
+        s = d + '|' + m
+        if not s in context_txt_dic:
+            context_txt_dic.append(s)
+
+    if len(ctx.dimensionNames) == 0:
+
+        assert id in ctx_names
+        ctx.time = ctx_names[id]
+
+        ctx.text = ctx.time
+
+    else:
+
+        ctx.time = ""
+        k = id.find('_')
+        assert k != -1
+        s = id[:k]
+        assert s in ctx_names
+        ctx.time = ctx_names[s] + "."
+
+        context_txt = ','.join(ctx.dimensionNames)
+
+        context_txt += ':' + ','.join(ctx.members)
+
+        ctx.text = ctx.time + context_txt
+
+    v = [ x for x in local_context_nodes if x.time == ctx.time ]
+    if len(v) != 0:
+        nd = v[0]
+    else:
+        nd = ContextNode()
+        nd.time = ctx.time
+        nd.startDate = ctx.startDate
+        nd.endDate = ctx.endDate
+        nd.instant = ctx.instant
+
+        local_context_nodes.append(nd)
+
+    for dim, mem in zip(ctx.dimensionNames, ctx.members):        
+        if dim in nd.dimensions:
+            ax = nd.dimensions[dim]
+        else:
+            ax = {}
+            nd.dimensions[dim] = ax
+
+        if mem in ax:
+            nd = ax[mem]
+        else:
+            nd = ContextNode()
+            ax[mem] = nd
+
+    nd.text = ctx.text
+
+    local_context_dic[id] = nd
+
+
 ns_dic = {}
 
 def getNameSpace(path):
@@ -462,7 +543,6 @@ ctx_names = {
     "Prior4YearDuration" :"4期前連結期間",
 }
 
-dup_dic = {}
 context_txt_dic = []
 
 def dumpInst(dt, nest):
@@ -478,45 +558,17 @@ def dumpInst(dt, nest):
             logf2.write("%s%s\n" % (tab, k))
             dumpInst(v, nest + 1)
 
-def dumpSub(inst, el):
+def dumpCtx(ctx_key, ctx):
+    pass
+
+
+def dumpSub(el):
 
     id, url, label, text = parseElement(el)
 
     if url == "http://www.xbrl.org/2003/instance" and label == "context":
 
-        ctx = Context()
-
-        readContext(el, None, ctx)
-        assert len(ctx.dimensionNames) == len(ctx.members)
-        for d, m in zip(ctx.dimensionNames, ctx.members):
-            s = d + '|' + m
-            if not s in context_txt_dic:
-                context_txt_dic.append(s)
-
-        if len(ctx.dimensionNames) == 0:
-
-            assert id in ctx_names
-            ctx.time = ctx_names[id]
-
-            ctx.text = ctx.time
-
-        else:
-
-            ctx.time = ""
-            k = id.find('_')
-            assert k != -1
-            s = id[:k]
-            assert s in ctx_names
-            ctx.time = ctx_names[s] + "."
-
-            context_txt = ','.join(ctx.dimensionNames)
-
-            context_txt += ':' + ','.join(ctx.members)
-
-            ctx.text = ctx.time + context_txt
-
-
-        local_context_dic[id] = ctx
+        makeContext(el, id)
         return False
 
     # if url in [ "http://www.xbrl.org/2003/instance", "http://www.xbrl.org/2003/linkbase" ]:
@@ -536,7 +588,9 @@ def dumpSub(inst, el):
         assert context_ref in local_context_dic
         ctx = local_context_dic[context_ref]
 
-        context_txt = ctx.text
+        item = Item(ele, text)
+        ctx.values.append(item)
+
 
         if ele.type == "テキストブロック":
             text = "省略"
@@ -552,36 +606,16 @@ def dumpSub(inst, el):
             else:
                 text += s
 
-        if ctx.time in inst:
-            dt = inst[ctx.time]
-        else:
-            dt = {}
-            inst[ctx.time] = dt
-
-        if len(ctx.dimensionNames) != 0:
-            for dim, mem in zip(ctx.dimensionNames, ctx.members):
-                if dim in dt:
-                    ax = dt[dim]
-                else:
-                    ax = {}
-                    dt[dim] = ax
-
-                if mem in ax:
-                    dt = ax[mem]
-                else:
-                    dt = {}
-                    ax[mem] = dt
-
         title = ele.getTitle()
-        if title in dt:
-            assert dt[title] == text
-        else:
-            dt[title] = text
+        # if title in dt:
+        #     assert dt[title] == text
+        # else:
+        #     dt[title] = text
         
-        logf.write("[%s][%s][%s][%s]\n" % (ele.type, context_txt, title, text))
+        logf.write("[%s][%s][%s][%s]\n" % (ele.type, ctx.text, title, text))
 
-        if context_txt != '':
-            s = context_txt + '|' + title
+        if ctx.text != '':
+            s = ctx.text + '|' + title
             t = context_ref + '|' + el.tag
             if s in dup_dic:
                 assert dup_dic[s] == t
@@ -590,15 +624,16 @@ def dumpSub(inst, el):
 
     return True
 
-def dump(inst, el):
-    go_down = dumpSub(inst, el)
+def dump(el):
+    go_down = dumpSub(el)
 
     if go_down:
         for child in el:
-            dump(inst, child)
+            dump(child)
 
 logf =  open(root_dir + '/data/log.txt', 'w', encoding='utf-8')
 logf2 =  open(root_dir + '/data/log2.txt', 'w', encoding='utf-8')
+logf3 =  open(root_dir + '/data/log3.txt', 'w', encoding='utf-8')
 
 xsd_url2path = {}
 xbrl_xsd_dic = None
@@ -705,6 +740,7 @@ for category_dir in Path(report_path).glob("*"):
             cur_dir = os.path.dirname(xbrl_path).replace('\\', '/')
 
             local_context_dic = {}
+            local_context_nodes = []
 
             ns_dic = {}
             link_labels = {}
@@ -748,29 +784,31 @@ for category_dir in Path(report_path).glob("*"):
 
             tree = ET.parse(xbrl_path)
             root = tree.getroot()
-            inst = {}
-            dump(inst, root)
+            dump(root)
 
-            for f in [ logf, logf2 ]:
+            for f in [ logf, logf2, logf3 ]:
                 f.write('\n')
                 f.write('------------------------------------------------------------------------------------------\n')
                 f.write('%s\n' % xbrl_path)
 
-            dumpInst(inst, 0)
+            # dumpInst(inst, 0)
 
-            if not '提出日時点' in inst:
-                print(xbrl_path)
-                logf.close()
-            edinet_code = inst['提出日時点']['EDINETコード、DEI']
-            end_date = inst['提出日時点']['当会計期間終了日、DEI']
-            json_dir = "%s/data/json/四半期報告書/%s/%s" % (root_dir, category_name, edinet_code)
-            if not os.path.exists(json_dir):
-                os.makedirs(json_dir)
+            for ctx_key, ctx in local_context_dic.items():
+                dumpCtx(ctx_key, ctx)
 
-            json_path = "%s/%s-%s.json" % (json_dir, edinet_code, end_date)
-            with codecs.open(json_path,'w','utf-8') as f:
-                json_str = json.dumps(inst, ensure_ascii=False)
-                f.write(json_str)
+            # if not '提出日時点' in inst:
+            #     print(xbrl_path)
+            #     logf.close()
+            # edinet_code = inst['提出日時点']['EDINETコード、DEI']
+            # end_date = inst['提出日時点']['当会計期間終了日、DEI']
+            # json_dir = "%s/data/json/四半期報告書/%s/%s" % (root_dir, category_name, edinet_code)
+            # if not os.path.exists(json_dir):
+            #     os.makedirs(json_dir)
+
+            # json_path = "%s/%s-%s.json" % (json_dir, edinet_code, end_date)
+            # with codecs.open(json_path,'w','utf-8') as f:
+            #     json_str = json.dumps(inst, ensure_ascii=False)
+            #     f.write(json_str)
 
 
 
@@ -780,3 +818,4 @@ for x in context_txt_dic:
 
 logf.close()
 logf2.close()
+logf3.close()
