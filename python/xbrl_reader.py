@@ -208,7 +208,7 @@ class ContextNode:
         self.endDate = None
         self.instant = None
         self.dimensions  = {}
-        self.contexts = []
+        self.member = None
         self.values  = []
         self.text = None
 
@@ -442,6 +442,7 @@ def makeContext(el, id):
             nd = ax[mem]
         else:
             nd = ContextNode()
+            nd.member = mem
             ax[mem] = nd
 
     nd.text = ctx.text
@@ -558,8 +559,50 @@ def dumpInst(dt, nest):
             logf2.write("%s%s\n" % (tab, k))
             dumpInst(v, nest + 1)
 
-def dumpCtx(ctx_key, ctx):
-    pass
+def dumpCtx(ctx, nest):
+    logf3.write('    ' * nest)
+    if ctx.time is not None:
+        logf3.write('t:%s ' % ctx.time)
+
+    if ctx.member is not None:
+        logf3.write('m:%s ' % ctx.member)
+
+    logf3.write('\n')
+    if len(ctx.dimensions) != 0:
+        tab = '    ' * (nest + 1)
+        for dim, ax in ctx.dimensions.items():
+            logf3.write('%sd:%s\n' % (tab, dim))
+            for mem, nd in ax.items():
+                dumpCtx(nd, nest + 2)
+
+    else:
+        assert len(ctx.values) != 0
+        tab = '    ' * (nest + 1)
+        for item in ctx.values:
+            ele = item.element
+            text = item.text
+            title = ele.getTitle()
+
+            if text is None:
+                text = 'null-text'
+            else:
+                if ele.type == "テキストブロック":
+                    text = "省略"
+                elif ele.type == '文字列':
+                    text = text.replace('\n', ' ')
+
+                    if 100 < len(text):
+                        text = "省略:" + text
+
+            if len(ele.calcFrom) != 0:
+                
+                s = '↑' + '|'.join([ x.to.getTitle() for x in ele.calcFrom ])
+                if text is None:
+                    text = s
+                else:
+                    text += s
+
+            logf3.write("%s[%s][%s][%s]\n" % (tab, ele.type, title, text))
 
 
 def dumpSub(el):
@@ -592,35 +635,21 @@ def dumpSub(el):
         ctx.values.append(item)
 
 
-        if ele.type == "テキストブロック":
-            text = "省略"
 
-        if text is not None and 100 < len(text):
-            text = "省略:" + text[:20].replace('\n', ' ')
-
-        if len(ele.calcFrom) != 0:
-            
-            s = '↑' + '|'.join([ x.to.getTitle() for x in ele.calcFrom ])
-            if text is None:
-                text = s
-            else:
-                text += s
-
-        title = ele.getTitle()
         # if title in dt:
         #     assert dt[title] == text
         # else:
         #     dt[title] = text
         
-        logf.write("[%s][%s][%s][%s]\n" % (ele.type, ctx.text, title, text))
+        # logf.write("[%s][%s][%s][%s]\n" % (ele.type, ctx.text, title, text))
 
-        if ctx.text != '':
-            s = ctx.text + '|' + title
-            t = context_ref + '|' + el.tag
-            if s in dup_dic:
-                assert dup_dic[s] == t
-            else:
-                dup_dic[s] = t
+        # if ctx.text != '':
+        #     s = ctx.text + '|' + title
+        #     t = context_ref + '|' + el.tag
+        #     if s in dup_dic:
+        #         assert dup_dic[s] == t
+        #     else:
+        #         dup_dic[s] = t
 
     return True
 
@@ -793,8 +822,8 @@ for category_dir in Path(report_path).glob("*"):
 
             # dumpInst(inst, 0)
 
-            for ctx_key, ctx in local_context_dic.items():
-                dumpCtx(ctx_key, ctx)
+            for ctx in local_context_nodes:
+                dumpCtx(ctx, 0)
 
             # if not '提出日時点' in inst:
             #     print(xbrl_path)
