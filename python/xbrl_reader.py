@@ -186,6 +186,7 @@ class Item:
     def __init__(self, ele, text):
         self.element = ele
         self.text    = text
+        self.children = []
 
 class Context:
     def __init__(self):
@@ -559,6 +560,37 @@ def dumpInst(dt, nest):
             logf2.write("%s%s\n" % (tab, k))
             dumpInst(v, nest + 1)
 
+def dumpItem(item, nest):
+    tab = '    ' * nest
+    ele = item.element
+    text = item.text
+    title = ele.getTitle()
+
+    if text is None:
+        text = 'null-text'
+    else:
+        if ele.type == "テキストブロック":
+            text = "省略"
+        elif ele.type == '文字列':
+            text = text.replace('\n', ' ')
+
+            if 100 < len(text):
+                text = "省略:" + text
+
+    if len(ele.calcFrom) != 0:
+        
+        s = '↑' + '|'.join([ x.to.getTitle() for x in ele.calcFrom ])
+        if text is None:
+            text = s
+        else:
+            text += s
+
+    logf3.write("%s[%s][%s][%s]\n" % (tab, ele.type, title, text))
+    for item2 in item.children:
+        dumpItem(item2, nest + 1)
+
+
+
 def dumpCtx(ctx, nest):
     logf3.write('    ' * nest)
     if ctx.time is not None:
@@ -577,32 +609,22 @@ def dumpCtx(ctx, nest):
 
     else:
         assert len(ctx.values) != 0
-        tab = '    ' * (nest + 1)
+
+        w = []
         for item in ctx.values:
-            ele = item.element
-            text = item.text
-            title = ele.getTitle()
-
-            if text is None:
-                text = 'null-text'
+            parents = [ x.to for x in item.element.calcFrom ]
+            v = [ x for x in ctx.values if x.element in parents ]
+            if len(v) == 0:
+                w.append(item)
             else:
-                if ele.type == "テキストブロック":
-                    text = "省略"
-                elif ele.type == '文字列':
-                    text = text.replace('\n', ' ')
+                for x in v:
+                    x.children.append(item)
 
-                    if 100 < len(text):
-                        text = "省略:" + text
+        ctx.values = w
 
-            if len(ele.calcFrom) != 0:
-                
-                s = '↑' + '|'.join([ x.to.getTitle() for x in ele.calcFrom ])
-                if text is None:
-                    text = s
-                else:
-                    text += s
 
-            logf3.write("%s[%s][%s][%s]\n" % (tab, ele.type, title, text))
+        for item in ctx.values:
+            dumpItem(item, nest + 1)
 
 
 def dumpSub(el):
