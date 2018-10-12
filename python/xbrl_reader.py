@@ -3,8 +3,12 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 import json
 import codecs
+import multiprocessing
+import threading
 
 root_dir = os.path.dirname( os.path.abspath(__file__) ).replace('\\', '/') + '/..'
+
+taxonomy_tmpl = root_dir + '/data/EDINET/taxonomy/%s/タクソノミ/taxonomy/'
 
 label_dics = {}
 xsd_dics = {}
@@ -28,159 +32,26 @@ type_dic = {
     "xbrli:pureItemType" : "純粋型"
 }
 
-def splitUrlLabel(text):
-    if text[0] == '{':
-        i = text.index('}')
-        url = text[1:i]
-        label = text[i+1:]
+ctx_names = {
+    "FilingDateInstant":"提出日時点",
+    "CurrentYTDDuration":"当四半期累計期間連結期間",
+    "CurrentQuarterInstant":"当四半期会計期間連結時点",
+    "CurrentQuarterDuration":"当四半期会計期間連結期間",
+    "Prior1YTDDuration":"前年度同四半期累計期間連結期間",
+    "Prior1QuarterInstant":"前年度同四半期会計期間連結時点",
+    "Prior1QuarterDuration":"前年度同四半期会計期間連結期間",
+    "CurrentYearInstant" :"当期連結時点",
+    "CurrentYearDuration":"当期連結期間",
+    "Prior1YearInstant"  :"前期連結時点",
+    "Prior1YearDuration" :"前期連結期間",
+    "Prior2YearInstant"  :"前々期連結時点",
+    "Prior2YearDuration" :"前々期連結期間",
+    "Prior3YearInstant"  :"3期前連結時点",
+    "Prior3YearDuration" :"3期前連結期間",
+    "Prior4YearInstant"  :"4期前連結時点",
+    "Prior4YearDuration" :"4期前連結期間",
+}
 
-        return url, label
-    
-    return None, None
-
-def normUrl(url):
-    if not url.endswith('.xsd') and url.startswith('http://disclosure.edinet-fsa.go.jp/taxonomy/'):
-        v = url.split('/')
-
-        name_space = v[4]
-        yymmdd     = v[5]
-        name_cor   = v[6]
-
-        # '/2013-08-31/タクソノミ/taxonomy/jpdei/2013-08-31/jpdei_cor_2013-08-31.xsd'
-
-        file_name = name_cor + "_" + yymmdd + '.xsd'
-        url2 = '/'.join(v[:6]) + '/' + file_name
-
-        return url2
-
-    elif url in [
-         'http://xbrl.ifrs.org/taxonomy/2015-03-11/ifrs-full',
-         'http://xbrl.ifrs.org/taxonomy/2014-03-05/ifrs-full',
-         'http://xbrl.ifrs.org/taxonomy/2014-03-05/full_ifrs/full_ifrs-cor_2014-03-05.xsd'
-        ]:
-        return 'http://xbrl.ifrs.org/taxonomy/2015-03-11/full_ifrs/full_ifrs-cor_2015-03-11.xsd'
-
-    else:
-        return url
-
-def ReadSchema(is_local, xsd_path, el, xsd_dic):
-    url, label = splitUrlLabel(el.tag)
-
-    if label == 'schema':
-        target_ns = el.get('targetNamespace')
-        target_ns = normUrl(target_ns)
-        if is_local:
-            local_xsd_url2path[target_ns] = xsd_path
-            local_xsd_dics[target_ns] = xsd_dic
-        else:
-            xsd_url2path[target_ns] = xsd_path
-            xsd_dics[target_ns] = xsd_dic
-
-        attr = getAttribs(el)
-    elif label == "element":
-
-        ele = Element()
-        ele.url  = url
-        ele.name = el.get("name")
-        ele.id   = el.get("id")
-
-        type = el.get("type")
-        if type in type_dic:
-            ele.type = type_dic[ type ]
-        else:
-            ele.type = type
-
-        xsd_dic[ele.name] = ele
-
-        if ele.id is not None:
-            xsd_dic[ele.id] = ele
-                
-    for child in el:
-        ReadSchema(is_local, xsd_path, child, xsd_dic)
-
-def getAttribs(el):
-    attr = {}
-    for k, v in el.attrib.items():
-        attr_url, attr_label = splitUrlLabel(k)
-        attr[attr_label] = v
-
-    return attr
-
-def ReadLabel(el, xsd_dic, loc_dic, resource_dic):
-    if el.tag[0] == '{':
-        i = el.tag.index('}')
-        url = el.tag[1:i]
-        label = el.tag[i+1:]
-
-        if label == "loc":
-
-            attr = getAttribs(el)
-            assert 'href' in attr and 'label' in attr
-            v = attr['href'].split('#')
-            assert len(v) == 2
-            loc_dic[ attr['label'] ] = v[1]
-
-        elif label == "label":
-
-            attr = getAttribs(el)
-            if 'label' in attr and 'role' in attr:
-                if attr['role'] in [ label_role, verboseLabel_role, terseLabel_role ]:
-                    resource_dic[ attr['label'] ] = { 'role':attr['role'], 'text': el.text }
-
-            id = el.get("id")
-            if id is None:
-                # {http://www.xbrl.org/2003/linkbase}label
-
-                attr = el.attrib
-                for k, v in attr.items():
-                    attr_url, attr_label = splitUrlLabel(k)
-                    if attr_label == 'label':
-                        link_labels[v] = el.text
-                        break
-
-                return
-            # assert id.startswith("label_")
-
-        elif label == "labelArc":
-            if xsd_dic is not None:
-                attr = getAttribs(el)
-
-                if 'from' in attr and 'to' in attr and attr['to'] in resource_dic:
-                    if attr['from'] in loc_dic and loc_dic[ attr['from'] ] in xsd_dic :
-                        ele = xsd_dic[ loc_dic[ attr['from'] ] ]
-                        res = resource_dic[ attr['to'] ]
-                        ele.labels[ res['role'] ] = res['text']
-                    elif attr['from'] in xsd_dic:
-                        ele = xsd_dic[ attr['from'] ]
-                        res = resource_dic[ attr['to'] ]
-                        ele.labels[ res['role'] ] = res['text']
-
-    for child in el:
-        ReadLabel(child, xsd_dic, loc_dic, resource_dic)
-
-
-local_context_dic = {}
-
-def parseElement(el):
-
-    id = el.get("id")
-    text  = el.text
-
-    if el.tag[0] == '{':
-        i = el.tag.index('}')
-        url = el.tag[1:i]
-        label = el.tag[i+1:]
-    else:
-        url = None
-        label = None
-
-    return id, url, label, text
-
-def NoneStr(x):
-    if x is None:
-        return ""
-    else:
-        return x
 
 class Item:
     def __init__(self, ele, text):
@@ -242,9 +113,295 @@ class Calc:
         self.order = order
         self.weight = weight
 
-taxonomy_tmpl = root_dir + '/data/EDINET/taxonomy/%s/タクソノミ/taxonomy/'
+def splitUrlLabel(text):
+    if text[0] == '{':
+        i = text.index('}')
+        url = text[1:i]
+        label = text[i+1:]
 
-ns_url_dic = {}
+        return url, label
+    
+    return None, None
+
+def getAttribs(el):
+    attr = {}
+    for k, v in el.attrib.items():
+        attr_url, attr_label = splitUrlLabel(k)
+        attr[attr_label] = v
+
+    return attr
+
+def parseElement(el):
+
+    id = el.get("id")
+    text  = el.text
+
+    if el.tag[0] == '{':
+        i = el.tag.index('}')
+        url = el.tag[1:i]
+        label = el.tag[i+1:]
+    else:
+        url = None
+        label = None
+
+    return id, url, label, text
+
+def normUrl(url):
+    if not url.endswith('.xsd') and url.startswith('http://disclosure.edinet-fsa.go.jp/taxonomy/'):
+        v = url.split('/')
+
+        name_space = v[4]
+        yymmdd     = v[5]
+        name_cor   = v[6]
+
+        # '/2013-08-31/タクソノミ/taxonomy/jpdei/2013-08-31/jpdei_cor_2013-08-31.xsd'
+
+        file_name = name_cor + "_" + yymmdd + '.xsd'
+        url2 = '/'.join(v[:6]) + '/' + file_name
+
+        return url2
+
+    elif url in [
+         'http://xbrl.ifrs.org/taxonomy/2015-03-11/ifrs-full',
+         'http://xbrl.ifrs.org/taxonomy/2014-03-05/ifrs-full',
+         'http://xbrl.ifrs.org/taxonomy/2014-03-05/full_ifrs/full_ifrs-cor_2014-03-05.xsd'
+        ]:
+        return 'http://xbrl.ifrs.org/taxonomy/2015-03-11/full_ifrs/full_ifrs-cor_2015-03-11.xsd'
+
+    else:
+        return url
+
+def NoneStr(x):
+    if x is None:
+        return ""
+    else:
+        return x
+
+def getTitleNsLabel(text):
+
+    v1 = text.split(':')
+    assert v1[0] in local_ns_dic
+    ns_url = local_ns_dic[v1[0]]
+    label      = v1[1]
+
+    ele = getElement(ns_url, label)
+    title = ele.getTitle()
+
+    return title
+
+def ReadLabel(el, xsd_dic, loc_dic, resource_dic):
+    if el.tag[0] == '{':
+        i = el.tag.index('}')
+        url = el.tag[1:i]
+        label = el.tag[i+1:]
+
+        if label == "loc":
+
+            attr = getAttribs(el)
+            assert 'href' in attr and 'label' in attr
+            v = attr['href'].split('#')
+            assert len(v) == 2
+            loc_dic[ attr['label'] ] = v[1]
+
+        elif label == "label":
+
+            attr = getAttribs(el)
+            if 'label' in attr and 'role' in attr:
+                if attr['role'] in [ label_role, verboseLabel_role, terseLabel_role ]:
+                    resource_dic[ attr['label'] ] = { 'role':attr['role'], 'text': el.text }
+
+            id = el.get("id")
+            if id is None:
+                # {http://www.xbrl.org/2003/linkbase}label
+
+                attr = el.attrib
+                for k, v in attr.items():
+                    attr_url, attr_label = splitUrlLabel(k)
+                    if attr_label == 'label':
+                        link_labels[v] = el.text
+                        break
+
+                return
+            # assert id.startswith("label_")
+
+        elif label == "labelArc":
+            if xsd_dic is not None:
+                attr = getAttribs(el)
+
+                if 'from' in attr and 'to' in attr and attr['to'] in resource_dic:
+                    if attr['from'] in loc_dic and loc_dic[ attr['from'] ] in xsd_dic :
+                        ele = xsd_dic[ loc_dic[ attr['from'] ] ]
+                        res = resource_dic[ attr['to'] ]
+                        ele.labels[ res['role'] ] = res['text']
+                    elif attr['from'] in xsd_dic:
+                        ele = xsd_dic[ attr['from'] ]
+                        res = resource_dic[ attr['to'] ]
+                        ele.labels[ res['role'] ] = res['text']
+
+    for child in el:
+        ReadLabel(child, xsd_dic, loc_dic, resource_dic)
+
+
+def readContext(el, parent, ctx):
+    id, url, label, text = parseElement(el)
+
+    if label == "identifier":
+        assert parent == "entity"
+
+    elif label == "startDate":
+        assert parent == "period"
+        ctx.startDate = text
+    elif label == "endDate":
+        assert parent == "period"
+        ctx.endDate = text
+    elif label == "instant":
+        assert parent == "period"
+        ctx.instant = text
+
+    elif label == "explicitMember":
+        assert parent == "scenario"
+
+        dimension = el.get("dimension")
+        title = getTitleNsLabel(dimension)
+        if not title in ctx.dimensionNames:
+            ctx.dimensionNames.append(title)
+
+        member = getTitleNsLabel(text)
+
+        ctx.members.append(member)
+
+    else:
+        assert label in [ "context", "entity", "period", "scenario" ]
+
+    for child in el:
+        readContext(child, label, ctx)
+
+def dumpItem(item, nest):
+    tab = '    ' * nest
+    ele = item.element
+    text = item.text
+    title = ele.getTitle()
+
+    if text is None:
+        text = 'null-text'
+    else:
+        if ele.type == "テキストブロック":
+            text = "省略"
+        elif ele.type == '文字列':
+            text = text.replace('\n', ' ')
+
+            if 100 < len(text):
+                text = "省略:" + text
+
+    if len(ele.calcFrom) != 0:
+        
+        s = '↑' + '|'.join([ x.to.getTitle() for x in ele.calcFrom ])
+        if text is None:
+            text = s
+        else:
+            text += s
+
+    logf3.write("%s[%s][%s][%s]\n" % (tab, ele.type, title, text))
+    for item2 in item.children:
+        dumpItem(item2, nest + 1)
+
+def dumpCtx(ctx, nest):
+    logf3.write('    ' * nest)
+    if ctx.time is not None:
+        logf3.write('t:%s ' % ctx.time)
+
+    if ctx.member is not None:
+        logf3.write('m:%s ' % ctx.member)
+
+    logf3.write('\n')
+    if len(ctx.dimensions) != 0:
+        tab = '    ' * (nest + 1)
+        for dim, ax in ctx.dimensions.items():
+            logf3.write('%sd:%s\n' % (tab, dim))
+            for mem, nd in ax.items():
+                dumpCtx(nd, nest + 2)
+
+    else:
+        assert len(ctx.values) != 0
+
+        w = []
+        for item in ctx.values:
+            parents = [ x.to for x in item.element.calcFrom ]
+            v = [ x for x in ctx.values if x.element in parents ]
+            if len(v) == 0:
+                w.append(item)
+            else:
+                for x in v:
+                    x.children.append(item)
+
+        ctx.values = w
+
+        for item in ctx.values:
+            dumpItem(item, nest + 1)
+
+def readCalcArcs(xsd_dic, locs, arcs):
+    for el2 in arcs:
+        attr2 = getAttribs(el2)
+        role = attr2['arcrole']
+        if role == 'http://www.xbrl.org/2003/arcrole/summation-item':
+            order = el2.get('order')
+            weight = el2.get('weight')
+            assert order is not None and weight is not None
+
+            from_label = attr2['from'] 
+            to_label = attr2['to'] 
+            assert from_label is not None and to_label is not None
+
+            from_el = locs[from_label] 
+            if to_label in locs:
+                to_el = locs[to_label] 
+            else:
+                to_el = xsd_dic[to_label]
+            assert from_el is not None and to_el is not None
+
+            calc = Calc(to_el, role, order, weight)
+            from_el.calcTo.append(calc)
+
+            if not from_el in [ x.to for x in to_el.calcFrom ]:
+                to_el.calcFrom.append( Calc(from_el, role, order, weight) )
+
+#--------------------------------------------------------------------------------------------------------------
+
+
+def ReadSchema(is_local, xsd_path, el, xsd_dic):
+    url, label = splitUrlLabel(el.tag)
+
+    if label == 'schema':
+        target_ns = el.get('targetNamespace')
+        target_ns = normUrl(target_ns)
+        if is_local:
+            local_xsd_url2path[target_ns] = xsd_path
+            local_xsd_dics[target_ns] = xsd_dic
+        else:
+            xsd_url2path[target_ns] = xsd_path
+            xsd_dics[target_ns] = xsd_dic
+
+        attr = getAttribs(el)
+    elif label == "element":
+
+        ele = Element()
+        ele.url  = url
+        ele.name = el.get("name")
+        ele.id   = el.get("id")
+
+        type = el.get("type")
+        if type in type_dic:
+            ele.type = type_dic[ type ]
+        else:
+            ele.type = type
+
+        xsd_dic[ele.name] = ele
+
+        if ele.id is not None:
+            xsd_dic[ele.id] = ele
+                
+    for child in el:
+        ReadSchema(is_local, xsd_path, child, xsd_dic)
 
 def parseNsUrl(ns_url):
 
@@ -342,52 +499,6 @@ def parseNsUrl(ns_url):
 
     return xsd_path, label_path
 
-def getTitleNsLabel(text):
-
-    v1 = text.split(':')
-    assert v1[0] in ns_dic
-    ns_url = ns_dic[v1[0]]
-    label      = v1[1]
-
-    ele = getElement(ns_url, label)
-    title = ele.getTitle()
-
-    return title
-
-def readContext(el, parent, ctx):
-    id, url, label, text = parseElement(el)
-
-    if label == "identifier":
-        assert parent == "entity"
-
-    elif label == "startDate":
-        assert parent == "period"
-        ctx.startDate = text
-    elif label == "endDate":
-        assert parent == "period"
-        ctx.endDate = text
-    elif label == "instant":
-        assert parent == "period"
-        ctx.instant = text
-
-    elif label == "explicitMember":
-        assert parent == "scenario"
-
-        dimension = el.get("dimension")
-        title = getTitleNsLabel(dimension)
-        if not title in ctx.dimensionNames:
-            ctx.dimensionNames.append(title)
-
-        member = getTitleNsLabel(text)
-
-        ctx.members.append(member)
-
-    else:
-        assert label in [ "context", "entity", "period", "scenario" ]
-
-    for child in el:
-        readContext(child, label, ctx)
-
 def makeContext(el, id):
     ctx = Context()
 
@@ -451,8 +562,6 @@ def makeContext(el, id):
     local_context_dic[id] = nd
 
 
-ns_dic = {}
-
 def getNameSpace(path):
     f = open(path)
     for line in f:
@@ -471,7 +580,7 @@ def getNameSpace(path):
                 k3 = line.find('"', k2 + 2)
                 url = line[k2 + 2:k3]
 
-                ns_dic[name] = url                
+                local_ns_dic[name] = url                
                 
             break
     f.close()
@@ -525,108 +634,6 @@ def getElement(url, label):
 
     return ele
 
-ctx_names = {
-    "FilingDateInstant":"提出日時点",
-    "CurrentYTDDuration":"当四半期累計期間連結期間",
-    "CurrentQuarterInstant":"当四半期会計期間連結時点",
-    "CurrentQuarterDuration":"当四半期会計期間連結期間",
-    "Prior1YTDDuration":"前年度同四半期累計期間連結期間",
-    "Prior1QuarterInstant":"前年度同四半期会計期間連結時点",
-    "Prior1QuarterDuration":"前年度同四半期会計期間連結期間",
-    "CurrentYearInstant" :"当期連結時点",
-    "CurrentYearDuration":"当期連結期間",
-    "Prior1YearInstant"  :"前期連結時点",
-    "Prior1YearDuration" :"前期連結期間",
-    "Prior2YearInstant"  :"前々期連結時点",
-    "Prior2YearDuration" :"前々期連結期間",
-    "Prior3YearInstant"  :"3期前連結時点",
-    "Prior3YearDuration" :"3期前連結期間",
-    "Prior4YearInstant"  :"4期前連結時点",
-    "Prior4YearDuration" :"4期前連結期間",
-}
-
-context_txt_dic = []
-
-def dumpInst(dt, nest):
-    if dt is None:
-        print("")
-    tab = '    ' * nest
-    for k, v in dt.items():
-        if v is None:
-            pass
-        elif type(v) is str:
-            logf2.write("%s%s : %s\n" % (tab, k, v))
-        else:
-            logf2.write("%s%s\n" % (tab, k))
-            dumpInst(v, nest + 1)
-
-def dumpItem(item, nest):
-    tab = '    ' * nest
-    ele = item.element
-    text = item.text
-    title = ele.getTitle()
-
-    if text is None:
-        text = 'null-text'
-    else:
-        if ele.type == "テキストブロック":
-            text = "省略"
-        elif ele.type == '文字列':
-            text = text.replace('\n', ' ')
-
-            if 100 < len(text):
-                text = "省略:" + text
-
-    if len(ele.calcFrom) != 0:
-        
-        s = '↑' + '|'.join([ x.to.getTitle() for x in ele.calcFrom ])
-        if text is None:
-            text = s
-        else:
-            text += s
-
-    logf3.write("%s[%s][%s][%s]\n" % (tab, ele.type, title, text))
-    for item2 in item.children:
-        dumpItem(item2, nest + 1)
-
-
-
-def dumpCtx(ctx, nest):
-    logf3.write('    ' * nest)
-    if ctx.time is not None:
-        logf3.write('t:%s ' % ctx.time)
-
-    if ctx.member is not None:
-        logf3.write('m:%s ' % ctx.member)
-
-    logf3.write('\n')
-    if len(ctx.dimensions) != 0:
-        tab = '    ' * (nest + 1)
-        for dim, ax in ctx.dimensions.items():
-            logf3.write('%sd:%s\n' % (tab, dim))
-            for mem, nd in ax.items():
-                dumpCtx(nd, nest + 2)
-
-    else:
-        assert len(ctx.values) != 0
-
-        w = []
-        for item in ctx.values:
-            parents = [ x.to for x in item.element.calcFrom ]
-            v = [ x for x in ctx.values if x.element in parents ]
-            if len(v) == 0:
-                w.append(item)
-            else:
-                for x in v:
-                    x.children.append(item)
-
-        ctx.values = w
-
-
-        for item in ctx.values:
-            dumpItem(item, nest + 1)
-
-
 def dumpSub(el):
 
     id, url, label, text = parseElement(el)
@@ -656,23 +663,6 @@ def dumpSub(el):
         item = Item(ele, text)
         ctx.values.append(item)
 
-
-
-        # if title in dt:
-        #     assert dt[title] == text
-        # else:
-        #     dt[title] = text
-        
-        # logf.write("[%s][%s][%s][%s]\n" % (ele.type, ctx.text, title, text))
-
-        # if ctx.text != '':
-        #     s = ctx.text + '|' + title
-        #     t = context_ref + '|' + el.tag
-        #     if s in dup_dic:
-        #         assert dup_dic[s] == t
-        #     else:
-        #         dup_dic[s] = t
-
     return True
 
 def dump(el):
@@ -682,41 +672,15 @@ def dump(el):
         for child in el:
             dump(child)
 
-logf =  open(root_dir + '/data/log.txt', 'w', encoding='utf-8')
-logf2 =  open(root_dir + '/data/log2.txt', 'w', encoding='utf-8')
 logf3 =  open(root_dir + '/data/log3.txt', 'w', encoding='utf-8')
 
 xsd_url2path = {}
 xbrl_xsd_dic = None
+ns_url_dic = {}
+context_txt_dic = []
 
 xbrl_idx = 0
 report_path = root_dir + '/data/EDINET/四半期報告書'
-
-def readCalcArcs(xsd_dic, locs, arcs):
-    for el2 in arcs:
-        attr2 = getAttribs(el2)
-        role = attr2['arcrole']
-        if role == 'http://www.xbrl.org/2003/arcrole/summation-item':
-            order = el2.get('order')
-            weight = el2.get('weight')
-            assert order is not None and weight is not None
-
-            from_label = attr2['from'] 
-            to_label = attr2['to'] 
-            assert from_label is not None and to_label is not None
-
-            from_el = locs[from_label] 
-            if to_label in locs:
-                to_el = locs[to_label] 
-            else:
-                to_el = xsd_dic[to_label]
-            assert from_el is not None and to_el is not None
-
-            calc = Calc(to_el, role, order, weight)
-            from_el.calcTo.append(calc)
-
-            if not from_el in [ x.to for x in to_el.calcFrom ]:
-                to_el.calcFrom.append( Calc(from_el, role, order, weight) )
 
 def readCalcSub(el, xsd_dic, locs, arcs):
     url, label = splitUrlLabel(el.tag)
@@ -767,11 +731,12 @@ def readCalc():
 
 readCalc()
 
-
+public_doc_list = []
 for category_dir in Path(report_path).glob("*"):
     category_name = os.path.basename(str(category_dir))
 
     for public_doc in category_dir.glob("*/*/XBRL/PublicDoc"):
+        public_doc_list.append( [category_name, public_doc] )
         xbrl_list = list( public_doc.glob("*.xbrl") )
         for p in xbrl_list:
 
@@ -793,9 +758,8 @@ for category_dir in Path(report_path).glob("*"):
             local_context_dic = {}
             local_context_nodes = []
 
-            ns_dic = {}
+            local_ns_dic = {}
             link_labels = {}
-            dup_dic = {}
             local_xsd_dics = {}
             local_ns_url_dic = {}
             local_xsd_url2path = {}
@@ -837,19 +801,14 @@ for category_dir in Path(report_path).glob("*"):
             root = tree.getroot()
             dump(root)
 
-            for f in [ logf, logf2, logf3 ]:
+            for f in [ logf3 ]:
                 f.write('\n')
                 f.write('------------------------------------------------------------------------------------------\n')
                 f.write('%s\n' % xbrl_path)
 
-            # dumpInst(inst, 0)
-
             for ctx in local_context_nodes:
                 dumpCtx(ctx, 0)
 
-            # if not '提出日時点' in inst:
-            #     print(xbrl_path)
-            #     logf.close()
             # edinet_code = inst['提出日時点']['EDINETコード、DEI']
             # end_date = inst['提出日時点']['当会計期間終了日、DEI']
             # json_dir = "%s/data/json/四半期報告書/%s/%s" % (root_dir, category_name, edinet_code)
@@ -861,12 +820,15 @@ for category_dir in Path(report_path).glob("*"):
             #     json_str = json.dumps(inst, ensure_ascii=False)
             #     f.write(json_str)
 
+cpu_count = multiprocessing.cpu_count()
+for cpu_id in range(cpu_count):
+    pass
 
-
+logf =  open(root_dir + '/data/log.txt', 'w', encoding='utf-8')
 logf.write("context_txt_dic --------------------------------------------------\n")
 for x in context_txt_dic:
     logf.write(x + '\n')
 
 logf.close()
-logf2.close()
+
 logf3.close()
