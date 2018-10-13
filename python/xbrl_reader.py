@@ -71,6 +71,36 @@ class Item:
         self.text    = text
         self.children = []
 
+    def toObj(self):
+        ele = self.element
+        text = self.text
+        title = ele.getTitle()
+
+        if text is None:
+            text = 'null-text'
+        else:
+            if ele.type == "テキストブロック":
+                text = "省略"
+            elif ele.type == '文字列':
+                text = text.replace('\n', ' ')
+
+                if 100 < len(text):
+                    text = "省略:" + text
+
+        if len(ele.calcFrom) != 0:
+            
+            s = '↑' + '|'.join([ x.to.getTitle() for x in ele.calcFrom ])
+            if text is None:
+                text = s
+            else:
+                text += s
+
+        obj = { 'type': ele.type, 'title': title, 'text': text }
+        obj['children'] = [ item2.toObj() for item2 in self.children ]
+
+        return obj
+
+
 class Context:
     def __init__(self):
         self.time       = None
@@ -95,6 +125,26 @@ class ContextNode:
         self.member = None
         self.values  = []
         self.text = None
+
+    def toObj(self):
+        obj = {}
+        if self.time is not None:
+            obj['time'] = self.time
+
+        if self.member is not None:
+            obj['member'] = self.member
+
+        if len(self.dimensions) != 0:
+            dimensions = {}
+            obj['dimensions'] = dimensions
+            for dim, ax in self.dimensions.items():
+                dimensions[dim] = [ nd.toObj() for mem, nd in ax.items()  ]
+
+        else:
+
+            obj['values'] = [ item.toObj() for item in self.values ]
+
+        return obj
 
 class Element:
     def __init__(self):
@@ -809,15 +859,16 @@ def readXbrl(inf, category_name, public_doc):
         root = tree.getroot()
         dump(inf, root)
 
-        inf.logf.write('\n%s\n%s\n' % ('----------' * 8, xbrl_path))
-
-        # local_context_nodes_list.append(inf.local_context_nodes)
-
         for ctx in inf.local_context_nodes:
             setChildren(inf, ctx)
 
+        ctx_objs = []
         for ctx in inf.local_context_nodes:
-            dumpCtx(inf, ctx, 0)
+            # dumpCtx(inf, ctx, 0)
+            ctx_objs.append(ctx.toObj())
+
+        json_str = json.dumps(ctx_objs, ensure_ascii=False)
+        local_context_nodes_list.append(json_str)
 
         # edinet_code = inst['提出日時点']['EDINETコード、DEI']
         # end_date = inst['提出日時点']['当会計期間終了日、DEI']
@@ -825,10 +876,6 @@ def readXbrl(inf, category_name, public_doc):
         # if not os.path.exists(json_dir):
         #     os.makedirs(json_dir)
 
-        # json_path = "%s/%s-%s.json" % (json_dir, edinet_code, end_date)
-        # with codecs.open(json_path,'w','utf-8') as f:
-        #     json_str = json.dumps(inst, ensure_ascii=False)
-        #     f.write(json_str)
 
 def readXbrlThread(cpu_count, cpu_id, public_doc_list, progress):
     inf = Inf()
@@ -847,6 +894,16 @@ def readXbrlThread(cpu_count, cpu_id, public_doc_list, progress):
         readXbrl(inf, category_name, public_doc)
 
     inf.logf.close()
+
+    with codecs.open('%s/data/log-%d.json' % (root_dir, cpu_id), 'w','utf-8') as f:
+
+        f.write('[\n')
+        s = ''
+        for json_str in local_context_nodes_list:
+            f.write('%s%s\n' % (s, json_str))
+            s = ','
+
+        f.write(']\n')
 
     print('CPU:%d 終了:%d' % (cpu_id, int(time.time() - start_time)) )
 
