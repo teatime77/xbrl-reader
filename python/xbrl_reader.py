@@ -318,6 +318,28 @@ def dumpItem(inf, item, nest):
     for item2 in item.children:
         dumpItem(inf, item2, nest + 1)
 
+def setChildren(inf, ctx):
+    if len(ctx.dimensions) != 0:
+        for dim, ax in ctx.dimensions.items():
+            for mem, nd in ax.items():
+                setChildren(inf, nd)
+
+    else:
+        assert len(ctx.values) != 0
+
+        top_items = []
+        for item in ctx.values:
+            parent_elements = [ x.to for x in item.element.calcFrom ]
+            sum_items = [ x for x in ctx.values if x.element in parent_elements ]
+            if len(sum_items) == 0:
+                top_items.append(item)
+            else:
+                for sum_item in sum_items:
+                    sum_item.children.append(item)                    
+
+        ctx.values = top_items
+
+
 def dumpCtx(inf, ctx, nest):
     inf.logf.write('    ' * nest)
     if ctx.time is not None:
@@ -335,19 +357,6 @@ def dumpCtx(inf, ctx, nest):
                 dumpCtx(inf, nd, nest + 2)
 
     else:
-        assert len(ctx.values) != 0
-
-        w = []
-        for item in ctx.values:
-            parents = [ x.to for x in item.element.calcFrom ]
-            v = [ x for x in ctx.values if x.element in parents ]
-            if len(v) == 0:
-                w.append(item)
-            else:
-                for x in v:
-                    x.children.append(item)
-
-        ctx.values = w
 
         for item in ctx.values:
             dumpItem(inf, item, nest + 1)
@@ -803,6 +812,10 @@ def readXbrl(inf, category_name, public_doc):
         inf.logf.write('\n%s\n%s\n' % ('----------' * 8, xbrl_path))
 
         # local_context_nodes_list.append(inf.local_context_nodes)
+
+        for ctx in inf.local_context_nodes:
+            setChildren(inf, ctx)
+
         for ctx in inf.local_context_nodes:
             dumpCtx(inf, ctx, 0)
 
