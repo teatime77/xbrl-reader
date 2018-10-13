@@ -5,6 +5,10 @@ import json
 import codecs
 import multiprocessing
 import threading
+import time
+
+start_time = time.time()
+prev_time  = start_time
 
 root_dir = os.path.dirname( os.path.abspath(__file__) ).replace('\\', '/') + '/..'
 
@@ -113,6 +117,12 @@ class Calc:
         self.order = order
         self.weight = weight
 
+class Inf:
+    __slots__ = ['cur_dir', 'local_context_dic', 'local_context_nodes', 'local_ns_dic', 'local_xsd_dics', 'local_ns_url_dic', 'local_xsd_url2path' ]
+
+    def __init__(self):
+        pass
+
 def splitUrlLabel(text):
     if text[0] == '{':
         i = text.index('}')
@@ -177,14 +187,14 @@ def NoneStr(x):
     else:
         return x
 
-def getTitleNsLabel(text):
+def getTitleNsLabel(inf, text):
 
     v1 = text.split(':')
-    assert v1[0] in local_ns_dic
-    ns_url = local_ns_dic[v1[0]]
+    assert v1[0] in inf.local_ns_dic
+    ns_url = inf.local_ns_dic[v1[0]]
     label      = v1[1]
 
-    ele = getElement(ns_url, label)
+    ele = getElement(inf, ns_url, label)
     title = ele.getTitle()
 
     return title
@@ -214,13 +224,6 @@ def ReadLabel(el, xsd_dic, loc_dic, resource_dic):
             if id is None:
                 # {http://www.xbrl.org/2003/linkbase}label
 
-                attr = el.attrib
-                for k, v in attr.items():
-                    attr_url, attr_label = splitUrlLabel(k)
-                    if attr_label == 'label':
-                        link_labels[v] = el.text
-                        break
-
                 return
             # assert id.startswith("label_")
 
@@ -242,7 +245,7 @@ def ReadLabel(el, xsd_dic, loc_dic, resource_dic):
         ReadLabel(child, xsd_dic, loc_dic, resource_dic)
 
 
-def readContext(el, parent, ctx):
+def readContext(inf, el, parent, ctx):
     id, url, label, text = parseElement(el)
 
     if label == "identifier":
@@ -262,11 +265,11 @@ def readContext(el, parent, ctx):
         assert parent == "scenario"
 
         dimension = el.get("dimension")
-        title = getTitleNsLabel(dimension)
+        title = getTitleNsLabel(inf, dimension)
         if not title in ctx.dimensionNames:
             ctx.dimensionNames.append(title)
 
-        member = getTitleNsLabel(text)
+        member = getTitleNsLabel(inf, text)
 
         ctx.members.append(member)
 
@@ -274,7 +277,7 @@ def readContext(el, parent, ctx):
         assert label in [ "context", "entity", "period", "scenario" ]
 
     for child in el:
-        readContext(child, label, ctx)
+        readContext(inf, child, label, ctx)
 
 def dumpItem(item, nest):
     tab = '    ' * nest
@@ -368,15 +371,15 @@ def readCalcArcs(xsd_dic, locs, arcs):
 #--------------------------------------------------------------------------------------------------------------
 
 
-def ReadSchema(is_local, xsd_path, el, xsd_dic):
+def ReadSchema(inf, is_local, xsd_path, el, xsd_dic):
     url, label = splitUrlLabel(el.tag)
 
     if label == 'schema':
         target_ns = el.get('targetNamespace')
         target_ns = normUrl(target_ns)
         if is_local:
-            local_xsd_url2path[target_ns] = xsd_path
-            local_xsd_dics[target_ns] = xsd_dic
+            inf.local_xsd_url2path[target_ns] = xsd_path
+            inf.local_xsd_dics[target_ns] = xsd_dic
         else:
             xsd_url2path[target_ns] = xsd_path
             xsd_dics[target_ns] = xsd_dic
@@ -401,9 +404,9 @@ def ReadSchema(is_local, xsd_path, el, xsd_dic):
             xsd_dic[ele.id] = ele
                 
     for child in el:
-        ReadSchema(is_local, xsd_path, child, xsd_dic)
+        ReadSchema(inf, is_local, xsd_path, child, xsd_dic)
 
-def parseNsUrl(ns_url):
+def parseNsUrl(inf, ns_url):
 
     if ns_url.startswith("http://disclosure.edinet-fsa.go.jp/taxonomy/"):
         # http://disclosure.edinet-fsa.go.jp/taxonomy/jpcrp/2017-02-28/jpcrp_cor
@@ -430,7 +433,7 @@ def parseNsUrl(ns_url):
         v = ns_url[len("http://disclosure.edinet-fsa.go.jp/"):].split('/')
         name = '-'.join(v[:3]) + '_' + '_'.join(v[3:])
 
-        base_path = "%s/%s" % (cur_dir, name )
+        base_path = "%s/%s" % (inf.cur_dir, name )
         xsd_path   = base_path + '.xsd'
         label_path = base_path + '_lab.xml'
 
@@ -481,8 +484,8 @@ def parseNsUrl(ns_url):
         return None, None
 
     if xsd_path is not None:
-        if xsd_path.startswith(cur_dir):
-            dic = local_ns_url_dic
+        if xsd_path.startswith(inf.cur_dir):
+            dic = inf.local_ns_url_dic
         else:
             dic = ns_url_dic
 
@@ -493,16 +496,16 @@ def parseNsUrl(ns_url):
     
     if ns_url in xsd_url2path:
         assert xsd_url2path[ns_url] == xsd_path
-    elif ns_url in local_xsd_url2path:
-        assert local_xsd_url2path[ns_url] == xsd_path
+    elif ns_url in inf.local_xsd_url2path:
+        assert inf.local_xsd_url2path[ns_url] == xsd_path
 
 
     return xsd_path, label_path
 
-def makeContext(el, id):
+def makeContext(inf, el, id):
     ctx = Context()
 
-    readContext(el, None, ctx)
+    readContext(inf, el, None, ctx)
     assert len(ctx.dimensionNames) == len(ctx.members)
     for d, m in zip(ctx.dimensionNames, ctx.members):
         s = d + '|' + m
@@ -531,7 +534,7 @@ def makeContext(el, id):
 
         ctx.text = ctx.time + context_txt
 
-    v = [ x for x in local_context_nodes if x.time == ctx.time ]
+    v = [ x for x in inf.local_context_nodes if x.time == ctx.time ]
     if len(v) != 0:
         nd = v[0]
     else:
@@ -541,7 +544,7 @@ def makeContext(el, id):
         nd.endDate = ctx.endDate
         nd.instant = ctx.instant
 
-        local_context_nodes.append(nd)
+        inf.local_context_nodes.append(nd)
 
     for dim, mem in zip(ctx.dimensionNames, ctx.members):        
         if dim in nd.dimensions:
@@ -559,10 +562,10 @@ def makeContext(el, id):
 
     nd.text = ctx.text
 
-    local_context_dic[id] = nd
+    inf.local_context_dic[id] = nd
 
 
-def getNameSpace(path):
+def getNameSpace(inf, path):
     f = open(path)
     for line in f:
         if line.find("xmlns:") != -1:
@@ -580,20 +583,20 @@ def getNameSpace(path):
                 k3 = line.find('"', k2 + 2)
                 url = line[k2 + 2:k3]
 
-                local_ns_dic[name] = url                
+                inf.local_ns_dic[name] = url                
                 
             break
     f.close()
 
-def GetSchemaLabelDic(url):
+def GetSchemaLabelDic(inf, url):
     url = normUrl(url)
-    xsd_path, label_path = parseNsUrl(url)
+    xsd_path, label_path = parseNsUrl(inf, url)
 
     xsd_dic = None
 
     if xsd_path is not None:
-        if url in local_xsd_dics:
-            xsd_dic = local_xsd_dics[url]
+        if url in inf.local_xsd_dics:
+            xsd_dic = inf.local_xsd_dics[url]
 
         elif url in xsd_dics:
             xsd_dic = xsd_dics[url]
@@ -603,11 +606,11 @@ def GetSchemaLabelDic(url):
 
             xsd_tree = ET.parse(xsd_path)
             xsd_root = xsd_tree.getroot()
-            ReadSchema(False, xsd_path, xsd_root, xsd_dic)
+            ReadSchema(inf, False, xsd_path, xsd_root, xsd_dic)
             assert xsd_dics[url] == xsd_dic
 
     if label_path is not None:
-        if label_path.startswith(cur_dir):
+        if label_path.startswith(inf.cur_dir):
             pass
 
         elif label_path in label_dics:
@@ -626,21 +629,21 @@ def GetSchemaLabelDic(url):
 
     return xsd_dic
 
-def getElement(url, label):
-    xsd_dic = GetSchemaLabelDic(url)
+def getElement(inf, url, label):
+    xsd_dic = GetSchemaLabelDic(inf, url)
 
     assert xsd_dic is not None and label in xsd_dic
     ele = xsd_dic[label]
 
     return ele
 
-def dumpSub(el):
+def dumpSub(inf, el):
 
     id, url, label, text = parseElement(el)
 
     if url == "http://www.xbrl.org/2003/instance" and label == "context":
 
-        makeContext(el, id)
+        makeContext(inf, el, id)
         return False
 
     # if url in [ "http://www.xbrl.org/2003/instance", "http://www.xbrl.org/2003/linkbase" ]:
@@ -648,7 +651,7 @@ def dumpSub(el):
         pass
     else:
 
-        ele = getElement(url, label)
+        ele = getElement(inf, url, label)
 
         assert el.tag[0] == '{'
 
@@ -657,20 +660,20 @@ def dumpSub(el):
         if ele.type is None or context_ref is None:
             return True
 
-        assert context_ref in local_context_dic
-        ctx = local_context_dic[context_ref]
+        assert context_ref in inf.local_context_dic
+        ctx = inf.local_context_dic[context_ref]
 
         item = Item(ele, text)
         ctx.values.append(item)
 
     return True
 
-def dump(el):
-    go_down = dumpSub(el)
+def dump(inf, el):
+    go_down = dumpSub(inf, el)
 
     if go_down:
         for child in el:
-            dump(child)
+            dump(inf, child)
 
 logf3 =  open(root_dir + '/data/log3.txt', 'w', encoding='utf-8')
 
@@ -682,7 +685,7 @@ context_txt_dic = []
 xbrl_idx = 0
 report_path = root_dir + '/data/EDINET/四半期報告書'
 
-def readCalcSub(el, xsd_dic, locs, arcs):
+def readCalcSub(inf, el, xsd_dic, locs, arcs):
     url, label = splitUrlLabel(el.tag)
 
     if label == 'calculationLink':
@@ -697,7 +700,7 @@ def readCalcSub(el, xsd_dic, locs, arcs):
                         if v[0] in xsd_url2path:
                             xsd_dic2 = xsd_dics[ v[0] ]
                         else:
-                            xsd_dic2 = GetSchemaLabelDic(v[0])
+                            xsd_dic2 = GetSchemaLabelDic(inf, v[0])
 
                     else:
                         xsd_dic2 = xsd_dic
@@ -709,9 +712,9 @@ def readCalcSub(el, xsd_dic, locs, arcs):
 
     else:
         for child in el:
-            readCalcSub(child, xsd_dic, locs, arcs)
+            readCalcSub(inf, child, xsd_dic, locs, arcs)
 
-def readCalc():
+def readCalc(inf):
     name_space = 'jppfs'
     name_cor = 'jppfs_cor'
     for yymmdd in [ '2018-02-28' ]:
@@ -720,16 +723,17 @@ def readCalc():
 
         xsd_dic = {}
 
-        ReadSchema(False, xsd_path, ET.parse(xsd_path).getroot(), xsd_dic)
+        ReadSchema(inf, False, xsd_path, ET.parse(xsd_path).getroot(), xsd_dic)
 
         for xml_path in Path(xsd_base).glob('r/*/*.xml'):
             xml_path = str(xml_path).replace('\\', '/')
             locs = {}
             arcs = []
-            readCalcSub(ET.parse(xml_path).getroot(), xsd_dic, locs, arcs)
+            readCalcSub(inf, ET.parse(xml_path).getroot(), xsd_dic, locs, arcs)
             readCalcArcs(xsd_dic, locs, arcs)
 
-readCalc()
+inf = Inf()
+readCalc(inf)
 
 public_doc_list = []
 for category_dir in Path(report_path).glob("*"):
@@ -751,31 +755,34 @@ for category_dir in Path(report_path).glob("*"):
 
             xbrl_idx += 1
             if xbrl_idx % 100 == 0:
-                print(xbrl_idx, xbrl_path)
+                lap = "%.2f" % ((time.time() - prev_time) / 100)
+                prev_time = time.time()
+                print(xbrl_idx, lap, xbrl_path)
 
-            cur_dir = os.path.dirname(xbrl_path).replace('\\', '/')
+            inf = Inf()
 
-            local_context_dic = {}
-            local_context_nodes = []
+            inf.cur_dir = os.path.dirname(xbrl_path).replace('\\', '/')
 
-            local_ns_dic = {}
-            link_labels = {}
-            local_xsd_dics = {}
-            local_ns_url_dic = {}
-            local_xsd_url2path = {}
+            inf.local_context_dic = {}
+            inf.local_context_nodes = []
 
-            local_label_cnt = 0
+            inf.local_ns_dic = {}
+            inf.local_xsd_dics = {}
+            inf.local_ns_url_dic = {}
+            inf.local_xsd_url2path = {}
+
+            label_cnt = 0
 
             if xbrl_xsd_dic is None:
-                xbrl_xsd_dic = GetSchemaLabelDic("http://www.xbrl.org/2003/instance")
+                xbrl_xsd_dic = GetSchemaLabelDic(inf, "http://www.xbrl.org/2003/instance")
 
-            for local_xsd_path_obj in Path(cur_dir).glob("*.xsd"):
+            for local_xsd_path_obj in Path(inf.cur_dir).glob("*.xsd"):
                 local_xsd_path_org = str(local_xsd_path_obj)
                 local_xsd_path = local_xsd_path_org.replace('\\', '/')
 
                 local_xsd_dic = {}
 
-                ReadSchema(True, local_xsd_path, ET.parse(local_xsd_path).getroot(), local_xsd_dic)
+                ReadSchema(inf, True, local_xsd_path, ET.parse(local_xsd_path).getroot(), local_xsd_dic)
 
                 local_label_path = local_xsd_path[:len(local_xsd_path) - 4] + "_lab.xml"
                 if os.path.exists(local_label_path):
@@ -783,30 +790,30 @@ for category_dir in Path(report_path).glob("*"):
                     resource_dic = {}
                     loc_dic = {}
                     ReadLabel(ET.parse(str(local_label_path)).getroot(), local_xsd_dic, loc_dic, resource_dic)
-                    local_label_cnt += 1
+                    label_cnt += 1
 
                 local_cal_path = local_xsd_path[:-4] + '_cal.xml'
                 if os.path.exists(local_cal_path):
                     locs = {}
                     arcs = []
-                    readCalcSub(ET.parse(local_cal_path).getroot(), local_xsd_dic, locs, arcs)
+                    readCalcSub(inf, ET.parse(local_cal_path).getroot(), local_xsd_dic, locs, arcs)
                     readCalcArcs(local_xsd_dic, locs, arcs)
 
-            local_label_path_list = list( Path(cur_dir).glob("*_lab.xml") )
-            assert len(local_label_path_list) == local_label_cnt
+            local_label_path_list = list( Path(inf.cur_dir).glob("*_lab.xml") )
+            assert len(local_label_path_list) == label_cnt
 
-            getNameSpace(xbrl_path)
+            getNameSpace(inf, xbrl_path)
 
             tree = ET.parse(xbrl_path)
             root = tree.getroot()
-            dump(root)
+            dump(inf, root)
 
             for f in [ logf3 ]:
                 f.write('\n')
                 f.write('------------------------------------------------------------------------------------------\n')
                 f.write('%s\n' % xbrl_path)
 
-            for ctx in local_context_nodes:
+            for ctx in inf.local_context_nodes:
                 dumpCtx(ctx, 0)
 
             # edinet_code = inst['提出日時点']['EDINETコード、DEI']
@@ -832,3 +839,5 @@ for x in context_txt_dic:
 logf.close()
 
 logf3.close()
+
+print('終了:%d' % int(time.time() - start_time) )
