@@ -15,8 +15,6 @@ root_dir = os.path.dirname( os.path.abspath(__file__) ).replace('\\', '/') + '/.
 taxonomy_tmpl = root_dir + '/data/EDINET/taxonomy/%s/タクソノミ/taxonomy/'
 report_path = root_dir + '/data/EDINET/四半期報告書'
 
-logf3 =  open(root_dir + '/data/log3.txt', 'w', encoding='utf-8')
-
 class SafeDic():
     def __init__(self):
         self.dic = {}
@@ -181,7 +179,7 @@ class Calc:
         self.weight = weight
 
 class Inf:
-    __slots__ = ['cur_dir', 'local_context_dic', 'local_context_nodes', 'local_ns_dic', 'local_xsd_dics', 'local_url2path', 'local_xsd_url2path' ]
+    __slots__ = ['cur_dir', 'local_context_dic', 'local_context_nodes', 'local_ns_dic', 'local_xsd_dics', 'local_url2path', 'local_xsd_url2path', 'logf' ]
 
     def __init__(self):
         self.cur_dir = None
@@ -344,7 +342,7 @@ def readContext(inf, el, parent, ctx):
     for child in el:
         readContext(inf, child, label, ctx)
 
-def dumpItem(item, nest):
+def dumpItem(inf, item, nest):
     tab = '    ' * nest
     ele = item.element
     text = item.text
@@ -369,25 +367,25 @@ def dumpItem(item, nest):
         else:
             text += s
 
-    logf3.write("%s[%s][%s][%s]\n" % (tab, ele.type, title, text))
+    inf.logf.write("%s[%s][%s][%s]\n" % (tab, ele.type, title, text))
     for item2 in item.children:
-        dumpItem(item2, nest + 1)
+        dumpItem(inf, item2, nest + 1)
 
-def dumpCtx(ctx, nest):
-    logf3.write('    ' * nest)
+def dumpCtx(inf, ctx, nest):
+    inf.logf.write('    ' * nest)
     if ctx.time is not None:
-        logf3.write('t:%s ' % ctx.time)
+        inf.logf.write('t:%s ' % ctx.time)
 
     if ctx.member is not None:
-        logf3.write('m:%s ' % ctx.member)
+        inf.logf.write('m:%s ' % ctx.member)
 
-    logf3.write('\n')
+    inf.logf.write('\n')
     if len(ctx.dimensions) != 0:
         tab = '    ' * (nest + 1)
         for dim, ax in ctx.dimensions.items():
-            logf3.write('%sd:%s\n' % (tab, dim))
+            inf.logf.write('%sd:%s\n' % (tab, dim))
             for mem, nd in ax.items():
-                dumpCtx(nd, nest + 2)
+                dumpCtx(inf, nd, nest + 2)
 
     else:
         assert len(ctx.values) != 0
@@ -405,7 +403,7 @@ def dumpCtx(ctx, nest):
         ctx.values = w
 
         for item in ctx.values:
-            dumpItem(item, nest + 1)
+            dumpItem(inf, item, nest + 1)
 
 def readCalcArcs(xsd_dic, locs, arcs):
     for el2 in arcs:
@@ -856,13 +854,10 @@ def readXbrl(inf, category_name, public_doc):
         root = tree.getroot()
         dump(inf, root)
 
-        for f in [ logf3 ]:
-            f.write('\n')
-            f.write('------------------------------------------------------------------------------------------\n')
-            f.write('%s\n' % xbrl_path)
+        inf.logf.write('\n%s\n%s\n' % ('----------' * 8, xbrl_path))
 
         for ctx in inf.local_context_nodes:
-            dumpCtx(ctx, 0)
+            dumpCtx(inf, ctx, 0)
 
         # edinet_code = inst['提出日時点']['EDINETコード、DEI']
         # end_date = inst['提出日時点']['当会計期間終了日、DEI']
@@ -887,14 +882,14 @@ for category_dir in Path(report_path).glob("*"):
     for public_doc in category_dir.glob("*/*/XBRL/PublicDoc"):
         public_doc_list.append( [category_name, public_doc] )
 
-for category_name, public_doc in public_doc_list:
-    inf = Inf()
-    readXbrl(inf, category_name, public_doc)
-
 cpu_count = multiprocessing.cpu_count()
 for cpu_id in range(cpu_count):
-    pass
+    if cpu_id == 0:
+        inf = Inf()
+        inf.logf =  open(root_dir + '/data/log3.txt', 'w', encoding='utf-8')
+        for category_name, public_doc in public_doc_list:
+            readXbrl(inf, category_name, public_doc)
+        inf.logf.close()
 
-logf3.close()
 
 print('終了:%d' % int(time.time() - start_time) )
