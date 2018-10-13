@@ -15,65 +15,8 @@ root_dir = os.path.dirname( os.path.abspath(__file__) ).replace('\\', '/') + '/.
 
 taxonomy_tmpl = root_dir + '/data/EDINET/taxonomy/%s/タクソノミ/taxonomy/'
 
-class SafeDic():
-    def __init__(self):
-        self.dic = {}
-        self.lock = threading.Lock()
-
-    def contains(self, key):
-        self.lock.acquire()
-        b = (key in self.dic)
-        self.lock.release()
-        return b    
-
-    def get(self, key):
-        self.lock.acquire()
-        val = self.dic[key]
-        self.lock.release()
-        return val
-
-    def set(self, key, val):
-        self.lock.acquire()
-        self.dic[key] = val
-        self.lock.release()
-
-class SafePath():
-    safe_paths = []
-    safe_paths_loc = threading.Lock()
-
-    @staticmethod
-    def get(path):
-        SafePath.safe_paths_loc.acquire()
-
-        v = [ x for x in SafePath.safe_paths if x.path == path ]
-        if len(v) == 0:
-            safe_path = SafePath(path)
-            SafePath.safe_paths.append(safe_path)
-        else:
-            safe_path = v[0]
-
-        SafePath.safe_paths_loc.release()
-
-        safe_path.lock.acquire()
-        return safe_path
-
-    def __init__(self, path):
-        self.path = path
-        self.lock = threading.Lock()
-
-    def release(self):
-        SafePath.safe_paths_loc.acquire()
-
-        if self in SafePath.safe_paths:
-            SafePath.safe_paths.remove(self)
-
-        self.lock.release()
-
-        SafePath.safe_paths_loc.release()
-
-
-xsd_dics = SafeDic()
-label_dics = SafeDic()
+xsd_dics = {}
+label_dics = {}
 
 url2path = {}
 xbrl_idx = 0
@@ -445,7 +388,7 @@ def ReadSchema(inf, is_local, xsd_path, el, xsd_dic):
             inf.local_xsd_url2path[target_ns] = xsd_path
             inf.local_xsd_dics[target_ns] = xsd_dic
         else:
-            xsd_dics.set(target_ns, xsd_dic)
+            xsd_dics[target_ns] = xsd_dic
 
         attr = getAttribs(el)
     elif label == "element":
@@ -661,10 +604,9 @@ def GetSchemaLabelDic(inf, url):
             xsd_dic = inf.local_xsd_dics[url]
 
         else:
-            safe_path = SafePath.get(url)
 
-            if xsd_dics.contains(url):
-                xsd_dic = xsd_dics.get(url)
+            if url in xsd_dics:
+                xsd_dic = xsd_dics[url]
 
             elif os.path.exists(xsd_path):
                 xsd_dic = {}
@@ -672,18 +614,15 @@ def GetSchemaLabelDic(inf, url):
                 xsd_tree = ET.parse(xsd_path)
                 xsd_root = xsd_tree.getroot()
                 ReadSchema(inf, False, xsd_path, xsd_root, xsd_dic)
-                assert xsd_dics.get(url) == xsd_dic
-
-            safe_path.release()
+                assert xsd_dics[url] == xsd_dic
 
     if label_path is not None:
         if label_path.startswith(inf.cur_dir):
             pass
 
         else:
-            safe_path = SafePath.get(label_path)
 
-            if label_dics.contains(label_path):
+            if label_path in label_dics:
                 pass
 
             elif os.path.exists(label_path):
@@ -695,9 +634,8 @@ def GetSchemaLabelDic(inf, url):
                 loc_dic = {}
                 ReadLabel(label_root, xsd_dic, loc_dic, resource_dic)
 
-                label_dics.set(label_path, 1)
+                label_dics[label_path]  = 1
 
-            safe_path.release()
 
     return xsd_dic
 
