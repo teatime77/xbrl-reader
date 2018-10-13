@@ -4,17 +4,16 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 import json
 import codecs
-import multiprocessing
 import threading
 import time
 
 start_time = time.time()
 prev_time  = start_time
+prev_cnt   = 0
 
 root_dir = os.path.dirname( os.path.abspath(__file__) ).replace('\\', '/') + '/..'
 
 taxonomy_tmpl = root_dir + '/data/EDINET/taxonomy/%s/タクソノミ/taxonomy/'
-report_path = root_dir + '/data/EDINET/四半期報告書'
 
 class SafeDic():
     def __init__(self):
@@ -182,7 +181,7 @@ class Calc:
         self.weight = weight
 
 class Inf:
-    __slots__ = ['cur_dir', 'local_context_dic', 'local_context_nodes', 'local_ns_dic', 'local_xsd_dics', 'local_url2path', 'local_xsd_url2path', 'logf' ]
+    __slots__ = [ 'cpu_count', 'cpu_id', 'cur_dir', 'local_context_dic', 'local_context_nodes', 'local_ns_dic', 'local_xsd_dics', 'local_url2path', 'local_xsd_url2path', 'logf', 'progress' ]
 
     def __init__(self):
         self.cur_dir = None
@@ -793,7 +792,7 @@ def readCalc(inf):
             readCalcArcs(xsd_dic, locs, arcs)
 
 def readXbrl(inf, category_name, public_doc):
-    global xbrl_idx, prev_time
+    global xbrl_idx, prev_time, prev_cnt
 
     xbrl_list = list( public_doc.glob("*.xbrl") )
     for p in xbrl_list:
@@ -808,10 +807,14 @@ def readXbrl(inf, category_name, public_doc):
         #     continue
 
         xbrl_idx += 1
+        inf.progress[inf.cpu_id] = xbrl_idx
         if xbrl_idx % 100 == 0:
-            lap = "%.2f" % ((time.time() - prev_time) / 100)
+
+            cnt = sum(inf.progress)
+            lap = "%.2f" % ((time.time() - prev_time) / (cnt - prev_cnt) )
             prev_time = time.time()
-            print(xbrl_idx, lap, xbrl_path)
+            prev_cnt = cnt
+            print(inf.cpu_id, lap, cnt, xbrl_path)
 
         inf.cur_dir = os.path.dirname(xbrl_path).replace('\\', '/')
 
@@ -873,8 +876,12 @@ def readXbrl(inf, category_name, public_doc):
         #     json_str = json.dumps(inst, ensure_ascii=False)
         #     f.write(json_str)
 
-def readXbrlThread(cpu_count, cpu_id, public_doc_list):
+def readXbrlThread(cpu_count, cpu_id, public_doc_list, progress):
     inf = Inf()
+    
+    inf.cpu_count = cpu_count
+    inf.cpu_id = cpu_id
+    inf.progress = progress
     inf.logf =  open('%s/data/log-%d.txt' % (root_dir, cpu_id), 'w', encoding='utf-8')
 
     cnt = len(public_doc_list)
@@ -886,32 +893,9 @@ def readXbrlThread(cpu_count, cpu_id, public_doc_list):
         readXbrl(inf, category_name, public_doc)
     inf.logf.close()
 
+    print('CPU:%d 終了:%d' % (cpu_id, int(time.time() - start_time)) )
+
 inf = Inf()
 readCalc(inf)
 
 GetSchemaLabelDic(inf, "http://www.xbrl.org/2003/instance")
-
-public_doc_list = []
-for category_dir in Path(report_path).glob("*"):
-    category_name = os.path.basename(str(category_dir))
-
-    for public_doc in category_dir.glob("*/*/XBRL/PublicDoc"):
-        public_doc_list.append( [category_name, public_doc] )
-
-print(sys.argv)
-
-cpu_count = multiprocessing.cpu_count()
-cpu_count = 1
-
-thread_list = list()
-for cpu_id in range(cpu_count):
-
-    thread = threading.Thread(target=readXbrlThread, args=(cpu_count, cpu_id, public_doc_list))
-    thread_list.append(thread)
-
-    thread.start()
-
-for thread in thread_list:
-    thread.join()    
-
-print('終了:%d' % int(time.time() - start_time) )
