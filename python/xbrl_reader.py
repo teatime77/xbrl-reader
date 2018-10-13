@@ -13,9 +13,41 @@ prev_time  = start_time
 root_dir = os.path.dirname( os.path.abspath(__file__) ).replace('\\', '/') + '/..'
 
 taxonomy_tmpl = root_dir + '/data/EDINET/taxonomy/%s/タクソノミ/taxonomy/'
+report_path = root_dir + '/data/EDINET/四半期報告書'
+
+logf3 =  open(root_dir + '/data/log3.txt', 'w', encoding='utf-8')
 
 label_dics = {}
-xsd_dics = {}
+
+class SafeDic():
+    def __init__(self):
+        self.dic = {}
+        self.lock = threading.Lock()
+
+    def contains(self, key):
+        self.lock.acquire()
+        b = (key in self.dic)
+        self.lock.release()
+        return b    
+
+    def get(self, key):
+        self.lock.acquire()
+        val = self.dic[key]
+        self.lock.release()
+        return val
+
+    def set(self, key, val):
+        self.lock.acquire()
+        self.dic[key] = val
+        self.lock.release()
+
+xsd_dics = SafeDic()
+
+xbrl_xsd_dic = None
+url2path = {}
+xbrl_idx = 0
+
+url2path_lock = threading.Lock()
 
 label_role = "http://www.xbrl.org/2003/role/label"
 verboseLabel_role = "http://www.xbrl.org/2003/role/verboseLabel"
@@ -118,7 +150,7 @@ class Calc:
         self.weight = weight
 
 class Inf:
-    __slots__ = ['cur_dir', 'local_context_dic', 'local_context_nodes', 'local_ns_dic', 'local_xsd_dics', 'local_ns_url_dic', 'local_xsd_url2path' ]
+    __slots__ = ['cur_dir', 'local_context_dic', 'local_context_nodes', 'local_ns_dic', 'local_xsd_dics', 'local_url2path', 'local_xsd_url2path' ]
 
     def __init__(self):
         pass
@@ -370,7 +402,6 @@ def readCalcArcs(xsd_dic, locs, arcs):
 
 #--------------------------------------------------------------------------------------------------------------
 
-
 def ReadSchema(inf, is_local, xsd_path, el, xsd_dic):
     url, label = splitUrlLabel(el.tag)
 
@@ -381,8 +412,7 @@ def ReadSchema(inf, is_local, xsd_path, el, xsd_dic):
             inf.local_xsd_url2path[target_ns] = xsd_path
             inf.local_xsd_dics[target_ns] = xsd_dic
         else:
-            xsd_url2path[target_ns] = xsd_path
-            xsd_dics[target_ns] = xsd_dic
+            xsd_dics.set(target_ns, xsd_dic)
 
         attr = getAttribs(el)
     elif label == "element":
@@ -485,17 +515,22 @@ def parseNsUrl(inf, ns_url):
 
     if xsd_path is not None:
         if xsd_path.startswith(inf.cur_dir):
-            dic = inf.local_ns_url_dic
+            if ns_url in inf.local_url2path:
+                assert inf.local_url2path[ns_url] == xsd_path
+            else:
+                inf.local_url2path[ns_url] = xsd_path
         else:
-            dic = ns_url_dic
-
-        if ns_url in dic:
-            assert dic[ns_url] == xsd_path
-        else:
-            dic[ns_url] = xsd_path
+            url2path_lock.acquire()
+            
+            if ns_url in url2path:
+                assert url2path[ns_url] == xsd_path
+            else:
+                url2path[ns_url] = xsd_path
+            
+            url2path_lock.release()
     
-    if ns_url in xsd_url2path:
-        assert xsd_url2path[ns_url] == xsd_path
+    if xsd_dics.contains(ns_url):
+        pass
     elif ns_url in inf.local_xsd_url2path:
         assert inf.local_xsd_url2path[ns_url] == xsd_path
 
@@ -507,10 +542,6 @@ def makeContext(inf, el, id):
 
     readContext(inf, el, None, ctx)
     assert len(ctx.dimensionNames) == len(ctx.members)
-    for d, m in zip(ctx.dimensionNames, ctx.members):
-        s = d + '|' + m
-        if not s in context_txt_dic:
-            context_txt_dic.append(s)
 
     if len(ctx.dimensionNames) == 0:
 
@@ -598,8 +629,8 @@ def GetSchemaLabelDic(inf, url):
         if url in inf.local_xsd_dics:
             xsd_dic = inf.local_xsd_dics[url]
 
-        elif url in xsd_dics:
-            xsd_dic = xsd_dics[url]
+        elif xsd_dics.contains(url):
+            xsd_dic = xsd_dics.get(url)
 
         elif os.path.exists(xsd_path):
             xsd_dic = {}
@@ -607,7 +638,7 @@ def GetSchemaLabelDic(inf, url):
             xsd_tree = ET.parse(xsd_path)
             xsd_root = xsd_tree.getroot()
             ReadSchema(inf, False, xsd_path, xsd_root, xsd_dic)
-            assert xsd_dics[url] == xsd_dic
+            assert xsd_dics.get(url) == xsd_dic
 
     if label_path is not None:
         if label_path.startswith(inf.cur_dir):
@@ -675,16 +706,6 @@ def dump(inf, el):
         for child in el:
             dump(inf, child)
 
-logf3 =  open(root_dir + '/data/log3.txt', 'w', encoding='utf-8')
-
-xsd_url2path = {}
-xbrl_xsd_dic = None
-ns_url_dic = {}
-context_txt_dic = []
-
-xbrl_idx = 0
-report_path = root_dir + '/data/EDINET/四半期報告書'
-
 def readCalcSub(inf, el, xsd_dic, locs, arcs):
     url, label = splitUrlLabel(el.tag)
 
@@ -697,8 +718,8 @@ def readCalcSub(inf, el, xsd_dic, locs, arcs):
                     attr2 = getAttribs(el2)
                     v = attr2['href'].split('#')
                     if v[0].startswith('http://'):
-                        if v[0] in xsd_url2path:
-                            xsd_dic2 = xsd_dics[ v[0] ]
+                        if xsd_dics.contains(v[0]):
+                            xsd_dic2 = xsd_dics.get(v[0])
                         else:
                             xsd_dic2 = GetSchemaLabelDic(inf, v[0])
 
@@ -760,7 +781,7 @@ def readXbrl(inf, category_name, public_doc):
 
         inf.local_ns_dic = {}
         inf.local_xsd_dics = {}
-        inf.local_ns_url_dic = {}
+        inf.local_url2path = {}
         inf.local_xsd_url2path = {}
 
         label_cnt = 0
@@ -836,13 +857,6 @@ for category_name, public_doc in public_doc_list:
 cpu_count = multiprocessing.cpu_count()
 for cpu_id in range(cpu_count):
     pass
-
-logf =  open(root_dir + '/data/log.txt', 'w', encoding='utf-8')
-logf.write("context_txt_dic --------------------------------------------------\n")
-for x in context_txt_dic:
-    logf.write(x + '\n')
-
-logf.close()
 
 logf3.close()
 
