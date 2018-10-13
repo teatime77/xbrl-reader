@@ -17,8 +17,6 @@ report_path = root_dir + '/data/EDINET/四半期報告書'
 
 logf3 =  open(root_dir + '/data/log3.txt', 'w', encoding='utf-8')
 
-label_dics = {}
-
 class SafeDic():
     def __init__(self):
         self.dic = {}
@@ -41,9 +39,42 @@ class SafeDic():
         self.dic[key] = val
         self.lock.release()
 
-xsd_dics = SafeDic()
+class SafePath():
+    safe_paths = []
+    safe_paths_loc = threading.Lock()
 
-xbrl_xsd_dic = None
+    @classmethod
+    def get(cls, path):
+        cls.safe_paths_loc.acquire()
+
+        v = [ x for x in cls.safe_paths if x.path == path ]
+        if len(v) == 0:
+            safe_path = SafePath(path)
+            cls.safe_paths.append(safe_path)
+        else:
+            safe_path = v[0]
+
+        cls.safe_paths_loc.release()
+
+        safe_path.lock.acquire()
+        return safe_path
+
+    def __init__(self, path):
+        self.path = path
+        self.lock = threading.Lock()
+
+    def release(self):
+        SafePath.safe_paths_loc.acquire()
+
+        SafePath.safe_paths.remove(self)
+        self.lock.release()
+
+        SafePath.safe_paths_loc.release()
+
+
+xsd_dics = SafeDic()
+label_dics = SafeDic()
+
 url2path = {}
 xbrl_idx = 0
 
@@ -153,7 +184,9 @@ class Inf:
     __slots__ = ['cur_dir', 'local_context_dic', 'local_context_nodes', 'local_ns_dic', 'local_xsd_dics', 'local_url2path', 'local_xsd_url2path' ]
 
     def __init__(self):
-        pass
+        self.cur_dir = None
+        self.local_xsd_url2path = None
+        self.local_xsd_dics = None
 
 def splitUrlLabel(text):
     if text[0] == '{':
@@ -514,7 +547,7 @@ def parseNsUrl(inf, ns_url):
         return None, None
 
     if xsd_path is not None:
-        if xsd_path.startswith(inf.cur_dir):
+        if inf.cur_dir is not None and xsd_path.startswith(inf.cur_dir):
             if ns_url in inf.local_url2path:
                 assert inf.local_url2path[ns_url] == xsd_path
             else:
@@ -529,9 +562,7 @@ def parseNsUrl(inf, ns_url):
             
             url2path_lock.release()
     
-    if xsd_dics.contains(ns_url):
-        pass
-    elif ns_url in inf.local_xsd_url2path:
+    elif inf.local_xsd_url2path is not None and ns_url in inf.local_xsd_url2path:
         assert inf.local_xsd_url2path[ns_url] == xsd_path
 
 
@@ -626,37 +657,47 @@ def GetSchemaLabelDic(inf, url):
     xsd_dic = None
 
     if xsd_path is not None:
-        if url in inf.local_xsd_dics:
+        if inf.local_xsd_dics is not None and url in inf.local_xsd_dics:
             xsd_dic = inf.local_xsd_dics[url]
 
-        elif xsd_dics.contains(url):
-            xsd_dic = xsd_dics.get(url)
+        else:
+            safe_path = SafePath.get(url)
 
-        elif os.path.exists(xsd_path):
-            xsd_dic = {}
+            if xsd_dics.contains(url):
+                xsd_dic = xsd_dics.get(url)
 
-            xsd_tree = ET.parse(xsd_path)
-            xsd_root = xsd_tree.getroot()
-            ReadSchema(inf, False, xsd_path, xsd_root, xsd_dic)
-            assert xsd_dics.get(url) == xsd_dic
+            elif os.path.exists(xsd_path):
+                xsd_dic = {}
+
+                xsd_tree = ET.parse(xsd_path)
+                xsd_root = xsd_tree.getroot()
+                ReadSchema(inf, False, xsd_path, xsd_root, xsd_dic)
+                assert xsd_dics.get(url) == xsd_dic
+
+            safe_path.release()
 
     if label_path is not None:
         if label_path.startswith(inf.cur_dir):
             pass
 
-        elif label_path in label_dics:
-            pass
+        else:
+            safe_path = SafePath.get(label_path)
 
-        elif os.path.exists(label_path):
+            if label_dics.contains(label_path):
+                pass
 
-            label_tree = ET.parse(label_path)
-            label_root = label_tree.getroot()
+            elif os.path.exists(label_path):
 
-            resource_dic = {}
-            loc_dic = {}
-            ReadLabel(label_root, xsd_dic, loc_dic, resource_dic)
+                label_tree = ET.parse(label_path)
+                label_root = label_tree.getroot()
 
-            label_dics[label_path] = 1
+                resource_dic = {}
+                loc_dic = {}
+                ReadLabel(label_root, xsd_dic, loc_dic, resource_dic)
+
+                label_dics.set(label_path, 1)
+
+            safe_path.release()
 
     return xsd_dic
 
@@ -718,10 +759,7 @@ def readCalcSub(inf, el, xsd_dic, locs, arcs):
                     attr2 = getAttribs(el2)
                     v = attr2['href'].split('#')
                     if v[0].startswith('http://'):
-                        if xsd_dics.contains(v[0]):
-                            xsd_dic2 = xsd_dics.get(v[0])
-                        else:
-                            xsd_dic2 = GetSchemaLabelDic(inf, v[0])
+                        xsd_dic2 = GetSchemaLabelDic(inf, v[0])
 
                     else:
                         xsd_dic2 = xsd_dic
@@ -754,7 +792,7 @@ def readCalc(inf):
             readCalcArcs(xsd_dic, locs, arcs)
 
 def readXbrl(inf, category_name, public_doc):
-    global xbrl_idx, xbrl_xsd_dic, prev_time
+    global xbrl_idx, prev_time
 
     xbrl_list = list( public_doc.glob("*.xbrl") )
     for p in xbrl_list:
@@ -785,9 +823,6 @@ def readXbrl(inf, category_name, public_doc):
         inf.local_xsd_url2path = {}
 
         label_cnt = 0
-
-        if xbrl_xsd_dic is None:
-            xbrl_xsd_dic = GetSchemaLabelDic(inf, "http://www.xbrl.org/2003/instance")
 
         for local_xsd_path_obj in Path(inf.cur_dir).glob("*.xsd"):
             local_xsd_path_org = str(local_xsd_path_obj)
@@ -842,6 +877,8 @@ def readXbrl(inf, category_name, public_doc):
 
 inf = Inf()
 readCalc(inf)
+
+GetSchemaLabelDic(inf, "http://www.xbrl.org/2003/instance")
 
 public_doc_list = []
 for category_dir in Path(report_path).glob("*"):
