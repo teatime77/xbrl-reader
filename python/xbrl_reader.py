@@ -732,6 +732,93 @@ def readCalc(inf):
             readCalcSub(inf, ET.parse(xml_path).getroot(), xsd_dic, locs, arcs)
             readCalcArcs(xsd_dic, locs, arcs)
 
+def readXbrl(inf, category_name, public_doc):
+    global xbrl_idx, xbrl_xsd_dic, prev_time
+
+    xbrl_list = list( public_doc.glob("*.xbrl") )
+    for p in xbrl_list:
+
+        xbrl_path = str(p)
+        basename = os.path.basename(xbrl_path)
+        if basename.startswith('ifrs-'):
+            assert len(xbrl_list) == 2
+            continue
+
+        # if basename != 'jpcrp040300-q2r-001_E03369-000_2016-09-30_01_2016-11-14.xbrl':
+        #     continue
+
+        xbrl_idx += 1
+        if xbrl_idx % 100 == 0:
+            lap = "%.2f" % ((time.time() - prev_time) / 100)
+            prev_time = time.time()
+            print(xbrl_idx, lap, xbrl_path)
+
+        inf.cur_dir = os.path.dirname(xbrl_path).replace('\\', '/')
+
+        inf.local_context_dic = {}
+        inf.local_context_nodes = []
+
+        inf.local_ns_dic = {}
+        inf.local_xsd_dics = {}
+        inf.local_ns_url_dic = {}
+        inf.local_xsd_url2path = {}
+
+        label_cnt = 0
+
+        if xbrl_xsd_dic is None:
+            xbrl_xsd_dic = GetSchemaLabelDic(inf, "http://www.xbrl.org/2003/instance")
+
+        for local_xsd_path_obj in Path(inf.cur_dir).glob("*.xsd"):
+            local_xsd_path_org = str(local_xsd_path_obj)
+            local_xsd_path = local_xsd_path_org.replace('\\', '/')
+
+            local_xsd_dic = {}
+
+            ReadSchema(inf, True, local_xsd_path, ET.parse(local_xsd_path).getroot(), local_xsd_dic)
+
+            local_label_path = local_xsd_path[:len(local_xsd_path) - 4] + "_lab.xml"
+            if os.path.exists(local_label_path):
+
+                resource_dic = {}
+                loc_dic = {}
+                ReadLabel(ET.parse(str(local_label_path)).getroot(), local_xsd_dic, loc_dic, resource_dic)
+                label_cnt += 1
+
+            local_cal_path = local_xsd_path[:-4] + '_cal.xml'
+            if os.path.exists(local_cal_path):
+                locs = {}
+                arcs = []
+                readCalcSub(inf, ET.parse(local_cal_path).getroot(), local_xsd_dic, locs, arcs)
+                readCalcArcs(local_xsd_dic, locs, arcs)
+
+        local_label_path_list = list( Path(inf.cur_dir).glob("*_lab.xml") )
+        assert len(local_label_path_list) == label_cnt
+
+        getNameSpace(inf, xbrl_path)
+
+        tree = ET.parse(xbrl_path)
+        root = tree.getroot()
+        dump(inf, root)
+
+        for f in [ logf3 ]:
+            f.write('\n')
+            f.write('------------------------------------------------------------------------------------------\n')
+            f.write('%s\n' % xbrl_path)
+
+        for ctx in inf.local_context_nodes:
+            dumpCtx(ctx, 0)
+
+        # edinet_code = inst['提出日時点']['EDINETコード、DEI']
+        # end_date = inst['提出日時点']['当会計期間終了日、DEI']
+        # json_dir = "%s/data/json/四半期報告書/%s/%s" % (root_dir, category_name, edinet_code)
+        # if not os.path.exists(json_dir):
+        #     os.makedirs(json_dir)
+
+        # json_path = "%s/%s-%s.json" % (json_dir, edinet_code, end_date)
+        # with codecs.open(json_path,'w','utf-8') as f:
+        #     json_str = json.dumps(inst, ensure_ascii=False)
+        #     f.write(json_str)
+
 inf = Inf()
 readCalc(inf)
 
@@ -741,91 +828,10 @@ for category_dir in Path(report_path).glob("*"):
 
     for public_doc in category_dir.glob("*/*/XBRL/PublicDoc"):
         public_doc_list.append( [category_name, public_doc] )
-        xbrl_list = list( public_doc.glob("*.xbrl") )
-        for p in xbrl_list:
 
-            xbrl_path = str(p)
-            basename = os.path.basename(xbrl_path)
-            if basename.startswith('ifrs-'):
-                assert len(xbrl_list) == 2
-                continue
-
-            # if basename != 'jpcrp040300-q2r-001_E03369-000_2016-09-30_01_2016-11-14.xbrl':
-            #     continue
-
-            xbrl_idx += 1
-            if xbrl_idx % 100 == 0:
-                lap = "%.2f" % ((time.time() - prev_time) / 100)
-                prev_time = time.time()
-                print(xbrl_idx, lap, xbrl_path)
-
-            inf = Inf()
-
-            inf.cur_dir = os.path.dirname(xbrl_path).replace('\\', '/')
-
-            inf.local_context_dic = {}
-            inf.local_context_nodes = []
-
-            inf.local_ns_dic = {}
-            inf.local_xsd_dics = {}
-            inf.local_ns_url_dic = {}
-            inf.local_xsd_url2path = {}
-
-            label_cnt = 0
-
-            if xbrl_xsd_dic is None:
-                xbrl_xsd_dic = GetSchemaLabelDic(inf, "http://www.xbrl.org/2003/instance")
-
-            for local_xsd_path_obj in Path(inf.cur_dir).glob("*.xsd"):
-                local_xsd_path_org = str(local_xsd_path_obj)
-                local_xsd_path = local_xsd_path_org.replace('\\', '/')
-
-                local_xsd_dic = {}
-
-                ReadSchema(inf, True, local_xsd_path, ET.parse(local_xsd_path).getroot(), local_xsd_dic)
-
-                local_label_path = local_xsd_path[:len(local_xsd_path) - 4] + "_lab.xml"
-                if os.path.exists(local_label_path):
-
-                    resource_dic = {}
-                    loc_dic = {}
-                    ReadLabel(ET.parse(str(local_label_path)).getroot(), local_xsd_dic, loc_dic, resource_dic)
-                    label_cnt += 1
-
-                local_cal_path = local_xsd_path[:-4] + '_cal.xml'
-                if os.path.exists(local_cal_path):
-                    locs = {}
-                    arcs = []
-                    readCalcSub(inf, ET.parse(local_cal_path).getroot(), local_xsd_dic, locs, arcs)
-                    readCalcArcs(local_xsd_dic, locs, arcs)
-
-            local_label_path_list = list( Path(inf.cur_dir).glob("*_lab.xml") )
-            assert len(local_label_path_list) == label_cnt
-
-            getNameSpace(inf, xbrl_path)
-
-            tree = ET.parse(xbrl_path)
-            root = tree.getroot()
-            dump(inf, root)
-
-            for f in [ logf3 ]:
-                f.write('\n')
-                f.write('------------------------------------------------------------------------------------------\n')
-                f.write('%s\n' % xbrl_path)
-
-            for ctx in inf.local_context_nodes:
-                dumpCtx(ctx, 0)
-
-            # edinet_code = inst['提出日時点']['EDINETコード、DEI']
-            # end_date = inst['提出日時点']['当会計期間終了日、DEI']
-            # json_dir = "%s/data/json/四半期報告書/%s/%s" % (root_dir, category_name, edinet_code)
-            # if not os.path.exists(json_dir):
-            #     os.makedirs(json_dir)
-
-            # json_path = "%s/%s-%s.json" % (json_dir, edinet_code, end_date)
-            # with codecs.open(json_path,'w','utf-8') as f:
-            #     json_str = json.dumps(inst, ensure_ascii=False)
-            #     f.write(json_str)
+for category_name, public_doc in public_doc_list:
+    inf = Inf()
+    readXbrl(inf, category_name, public_doc)
 
 cpu_count = multiprocessing.cpu_count()
 for cpu_id in range(cpu_count):
