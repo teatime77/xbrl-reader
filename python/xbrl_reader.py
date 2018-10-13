@@ -21,6 +21,8 @@ label_dics = {}
 url2path = {}
 xbrl_idx = 0
 
+local_context_nodes_list = []
+
 url2path_lock = threading.Lock()
 
 label_role = "http://www.xbrl.org/2003/role/label"
@@ -730,7 +732,7 @@ def readCalc(inf):
             readCalcArcs(xsd_dic, locs, arcs)
 
 def readXbrl(inf, category_name, public_doc):
-    global xbrl_idx, prev_time, prev_cnt
+    global xbrl_idx, prev_time, prev_cnt, local_context_nodes_list
 
     xbrl_list = list( public_doc.glob("*.xbrl") )
     for p in xbrl_list:
@@ -749,10 +751,10 @@ def readXbrl(inf, category_name, public_doc):
         if xbrl_idx % 100 == 0:
 
             cnt = sum(inf.progress)
-            lap = "%.2f" % ((time.time() - prev_time) / (cnt - prev_cnt) )
+            lap = "%d" % int(1000 * (time.time() - prev_time) / (cnt - prev_cnt) )
             prev_time = time.time()
             prev_cnt = cnt
-            print(inf.cpu_id, lap, cnt, xbrl_path)
+            print(inf.cpu_id, lap, cnt, category_name)
 
         inf.cur_dir = os.path.dirname(xbrl_path).replace('\\', '/')
 
@@ -800,6 +802,7 @@ def readXbrl(inf, category_name, public_doc):
 
         inf.logf.write('\n%s\n%s\n' % ('----------' * 8, xbrl_path))
 
+        # local_context_nodes_list.append(inf.local_context_nodes)
         for ctx in inf.local_context_nodes:
             dumpCtx(inf, ctx, 0)
 
@@ -829,6 +832,7 @@ def readXbrlThread(cpu_count, cpu_id, public_doc_list, progress):
 
     for category_name, public_doc in public_doc_list[st:ed]:
         readXbrl(inf, category_name, public_doc)
+
     inf.logf.close()
 
     print('CPU:%d 終了:%d' % (cpu_id, int(time.time() - start_time)) )
