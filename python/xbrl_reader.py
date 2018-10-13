@@ -1,3 +1,4 @@
+import sys
 import os
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -41,18 +42,18 @@ class SafePath():
     safe_paths = []
     safe_paths_loc = threading.Lock()
 
-    @classmethod
-    def get(cls, path):
-        cls.safe_paths_loc.acquire()
+    @staticmethod
+    def get(path):
+        SafePath.safe_paths_loc.acquire()
 
-        v = [ x for x in cls.safe_paths if x.path == path ]
+        v = [ x for x in SafePath.safe_paths if x.path == path ]
         if len(v) == 0:
             safe_path = SafePath(path)
-            cls.safe_paths.append(safe_path)
+            SafePath.safe_paths.append(safe_path)
         else:
             safe_path = v[0]
 
-        cls.safe_paths_loc.release()
+        SafePath.safe_paths_loc.release()
 
         safe_path.lock.acquire()
         return safe_path
@@ -64,7 +65,9 @@ class SafePath():
     def release(self):
         SafePath.safe_paths_loc.acquire()
 
-        SafePath.safe_paths.remove(self)
+        if self in SafePath.safe_paths:
+            SafePath.safe_paths.remove(self)
+
         self.lock.release()
 
         SafePath.safe_paths_loc.release()
@@ -870,6 +873,19 @@ def readXbrl(inf, category_name, public_doc):
         #     json_str = json.dumps(inst, ensure_ascii=False)
         #     f.write(json_str)
 
+def readXbrlThread(cpu_count, cpu_id, public_doc_list):
+    inf = Inf()
+    inf.logf =  open('%s/data/log-%d.txt' % (root_dir, cpu_id), 'w', encoding='utf-8')
+
+    cnt = len(public_doc_list)
+    span = cnt // cpu_count
+    st = cpu_id * span
+    ed = st + span if cpu_id != cpu_count - 1 else cnt
+
+    for category_name, public_doc in public_doc_list[st:ed]:
+        readXbrl(inf, category_name, public_doc)
+    inf.logf.close()
+
 inf = Inf()
 readCalc(inf)
 
@@ -882,14 +898,20 @@ for category_dir in Path(report_path).glob("*"):
     for public_doc in category_dir.glob("*/*/XBRL/PublicDoc"):
         public_doc_list.append( [category_name, public_doc] )
 
-cpu_count = multiprocessing.cpu_count()
-for cpu_id in range(cpu_count):
-    if cpu_id == 0:
-        inf = Inf()
-        inf.logf =  open(root_dir + '/data/log3.txt', 'w', encoding='utf-8')
-        for category_name, public_doc in public_doc_list:
-            readXbrl(inf, category_name, public_doc)
-        inf.logf.close()
+print(sys.argv)
 
+cpu_count = multiprocessing.cpu_count()
+cpu_count = 1
+
+thread_list = list()
+for cpu_id in range(cpu_count):
+
+    thread = threading.Thread(target=readXbrlThread, args=(cpu_count, cpu_id, public_doc_list))
+    thread_list.append(thread)
+
+    thread.start()
+
+for thread in thread_list:
+    thread.join()    
 
 print('終了:%d' % int(time.time() - start_time) )
