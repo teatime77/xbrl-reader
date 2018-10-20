@@ -21,7 +21,7 @@ label_dics = {}
 url2path = {}
 xbrl_idx = 0
 
-local_context_nodes_list = []
+local_context_nodes_list = {}
 
 url2path_lock = threading.Lock()
 
@@ -868,13 +868,20 @@ def readXbrl(inf, category_name, public_doc):
             ctx_objs.append(ctx.toObj())
 
         json_str = json.dumps(ctx_objs, ensure_ascii=False)
-        local_context_nodes_list.append(json_str)
+
+        v1 = [ x for x in ctx_objs if x['time'] == '提出日時点' ]
+        dt1 = v1[0]
+        v2 = [ x for x in dt1['values'] if x['title'] == 'EDINETコード、DEI' ]
+        dt2 = v2[0]
+        code = dt2['text']
+        if code in local_context_nodes_list:
+            category_name, json_str_list = local_context_nodes_list[code]
+            json_str_list.append( json_str )
+        else:
+            local_context_nodes_list[code] = (category_name, [json_str])
 
         # edinet_code = inst['提出日時点']['EDINETコード、DEI']
         # end_date = inst['提出日時点']['当会計期間終了日、DEI']
-        # json_dir = "%s/data/json/四半期報告書/%s/%s" % (root_dir, category_name, edinet_code)
-        # if not os.path.exists(json_dir):
-        #     os.makedirs(json_dir)
 
 
 def readXbrlThread(cpu_count, cpu_id, public_doc_list, progress):
@@ -895,15 +902,20 @@ def readXbrlThread(cpu_count, cpu_id, public_doc_list, progress):
 
     inf.logf.close()
 
-    with codecs.open('%s/data/log-%d.json' % (root_dir, cpu_id), 'w','utf-8') as f:
+    for code, (category_name, json_str_list) in local_context_nodes_list.items():
+        json_dir = "%s/data/json/四半期報告書/%s" % (root_dir, category_name)
+        if not os.path.exists(json_dir):
+            os.makedirs(json_dir)
 
-        f.write('[\n')
-        s = ''
-        for json_str in local_context_nodes_list:
-            f.write('%s%s\n' % (s, json_str))
-            s = ','
+        with codecs.open('%s/%s.json' % (json_dir, code), 'w','utf-8') as f:
 
-        f.write(']\n')
+            f.write('[\n')
+            s = ''
+            for json_str in json_str_list:
+                f.write('%s%s\n' % (s, json_str))
+                s = ','
+
+            f.write(']\n')
 
     print('CPU:%d 終了:%d' % (cpu_id, int(time.time() - start_time)) )
 

@@ -25,7 +25,10 @@ def f(cpu_count, cpu_id, public_doc_list, progress):
 if __name__ == '__main__':
 
     cpu_count = multiprocessing.cpu_count()
+    # cpu_count = 1
+    # cpu_id = 0
     progress = Array('i', [0] * cpu_count)
+    # f(cpu_count, cpu_id, public_doc_list, progress)
 
     process_list = []
     for cpu_id in range(cpu_count):
