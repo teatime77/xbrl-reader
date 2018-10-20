@@ -21,7 +21,7 @@ label_dics = {}
 url2path = {}
 xbrl_idx = 0
 
-local_context_nodes_list = {}
+edinet_json_dic = {}
 
 url2path_lock = threading.Lock()
 
@@ -791,7 +791,7 @@ def readCalc(inf):
             readCalcArcs(xsd_dic, locs, arcs)
 
 def readXbrl(inf, category_name, public_doc):
-    global xbrl_idx, prev_time, prev_cnt, local_context_nodes_list
+    global xbrl_idx, prev_time, prev_cnt, edinet_json_dic
 
     xbrl_list = list( public_doc.glob("*.xbrl") )
     for p in xbrl_list:
@@ -873,18 +873,18 @@ def readXbrl(inf, category_name, public_doc):
         dt1 = v1[0]
         v2 = [ x for x in dt1['values'] if x['title'] == 'EDINETコード、DEI' ]
         dt2 = v2[0]
-        code = dt2['text']
-        if code in local_context_nodes_list:
-            category_name, json_str_list = local_context_nodes_list[code]
+        edinet_code = dt2['text']
+        if edinet_code in edinet_json_dic:
+            category_name, json_str_list = edinet_json_dic[edinet_code]
             json_str_list.append( json_str )
         else:
-            local_context_nodes_list[code] = (category_name, [json_str])
+            edinet_json_dic[edinet_code] = (category_name, [json_str])
 
         # edinet_code = inst['提出日時点']['EDINETコード、DEI']
         # end_date = inst['提出日時点']['当会計期間終了日、DEI']
 
 
-def readXbrlThread(cpu_count, cpu_id, public_doc_list, progress):
+def readXbrlThread(cpu_count, cpu_id, public_docs, progress):
     inf = Inf()
     
     inf.cpu_count = cpu_count
@@ -892,22 +892,17 @@ def readXbrlThread(cpu_count, cpu_id, public_doc_list, progress):
     inf.progress = progress
     inf.logf =  open('%s/data/log-%d.txt' % (root_dir, cpu_id), 'w', encoding='utf-8')
 
-    cnt = len(public_doc_list)
-    span = cnt // cpu_count
-    st = cpu_id * span
-    ed = st + span if cpu_id != cpu_count - 1 else cnt
-
-    for category_name, public_doc in public_doc_list[st:ed]:
+    for category_name, public_doc in public_docs:
         readXbrl(inf, category_name, public_doc)
 
     inf.logf.close()
 
-    for code, (category_name, json_str_list) in local_context_nodes_list.items():
+    for edinet_code, (category_name, json_str_list) in edinet_json_dic.items():
         json_dir = "%s/data/json/四半期報告書/%s" % (root_dir, category_name)
         if not os.path.exists(json_dir):
             os.makedirs(json_dir)
 
-        with codecs.open('%s/%s.json' % (json_dir, code), 'w','utf-8') as f:
+        with codecs.open('%s/%s.json' % (json_dir, edinet_code), 'w','utf-8') as f:
 
             f.write('[\n')
             s = ''
