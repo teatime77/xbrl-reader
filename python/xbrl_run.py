@@ -49,7 +49,6 @@ if __name__ == '__main__':
     process_list = []
     for cpu_id in range(cpu_count):
 
-        print('run cpu:%d cnt:%d' % (cpu_id, len(public_docs_list[cpu_id])))
         p = Process(target=f, args=(cpu_count, cpu_id, public_docs_list[cpu_id], progress))
 
         process_list.append(p)

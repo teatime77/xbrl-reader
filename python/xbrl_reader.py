@@ -22,6 +22,7 @@ url2path = {}
 xbrl_idx = 0
 
 edinet_json_dic = {}
+times = []
 
 url2path_lock = threading.Lock()
 
@@ -130,15 +131,18 @@ class ContextNode:
         obj = {}
         if self.time is not None:
             obj['time'] = self.time
+            if not self.time in times:
+                times.append(self.time)
 
         if self.member is not None:
             obj['member'] = self.member
 
         if len(self.dimensions) != 0:
-            dimensions = {}
+            dimensions = []
             obj['dimensions'] = dimensions
             for dim, ax in self.dimensions.items():
-                dimensions[dim] = [ nd.toObj() for mem, nd in ax.items()  ]
+                dt = { 'axis': dim, 'members': [ nd.toObj() for mem, nd in ax.items() ] }
+                dimensions.append(dt)
 
         else:
 
@@ -592,13 +596,13 @@ def makeContext(inf, el, id):
         assert k != -1
         s = id[:k]
         assert s in ctx_names
-        ctx.time = ctx_names[s] + "."
+        ctx.time = ctx_names[s]
 
         context_txt = ','.join(ctx.dimensionNames)
 
         context_txt += ':' + ','.join(ctx.members)
 
-        ctx.text = ctx.time + context_txt
+        ctx.text = ctx.time + "@" + context_txt
 
     v = [ x for x in inf.local_context_nodes if x.time == ctx.time ]
     if len(v) != 0:
@@ -895,6 +899,8 @@ def readXbrlThread(cpu_count, cpu_id, public_docs, progress):
     for category_name, public_doc in public_docs:
         readXbrl(inf, category_name, public_doc)
 
+    for s in times:
+        inf.logf.write('%s\n' % s)
     inf.logf.close()
 
     for edinet_code, (category_name, json_str_list) in edinet_json_dic.items():
