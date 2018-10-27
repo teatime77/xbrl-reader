@@ -72,6 +72,89 @@ def findObj(v, key, val):
             return x
     return None
 
+def cloneItem(obj, cnt, idx):
+    union = { 'type':obj['type'], 'title':obj['title'], 'text': [None] * cnt }
+    union['text'][idx] = obj['text']
+
+    union['children'] = [ cloneItem(x, cnt, idx) for x in obj['children'] ]
+
+    return union
+
+
+def joinItem(union, obj, cnt, idx):
+    union['text'][idx] = obj['text']
+
+    union_children = union['children']
+    for child in obj['children']:
+        union_child = findObj(union_children, 'title', child['title'])
+        if union_child is None:
+            union_children.append( cloneItem(child, cnt, idx) )
+        else:
+            union_child['text'][idx] = child['text']
+
+    return union
+
+def joinAxis(union_axis, axis, cnt, idx):
+    assert 'axis' in axis
+    if 'axis' in union_axis:
+        assert union_axis['axis'] == axis['axis']
+
+        assert 'members' in axis and 'members' in union_axis
+        union_members = union_axis['members']
+        for member in axis['members']:
+            union_member = findObj(union_members, 'member', member['member'])
+            if union_member is None:
+                union_members.append( joinObj({}, member, cnt, idx) )
+            else:
+                joinObj(union_member, member, cnt, idx)
+    else:
+        union_axis['axis'] = axis['axis']
+        union_axis['members'] = [ joinObj({}, member, cnt, idx) for member in axis['members'] ]
+
+    return union_axis
+
+def joinObj(union, obj, cnt, idx):
+    if 'time' in obj:
+        if 'time' in union:
+            assert union['time'] == obj['time']
+        else:
+            union['time'] = obj['time']
+
+    if 'member' in obj:
+        if 'member' in union:
+            assert union['member'] == obj['member']
+        else:
+            union['member'] = obj['member']
+
+    if 'axes' in obj:
+        if 'axes' in union:
+            union_axes = union['axes']
+            for axis in obj['axes']:
+                union_axis = findObj(union_axes, 'axis', axis['axis'])
+                if union_axis is None:
+                    union_axes.append( joinAxis({}, axis, cnt, idx) )
+                else:
+                    joinAxis(union_axis, axis, cnt, idx)
+        else:
+            union['axes'] = [ joinAxis({}, axis, cnt, idx) for axis in obj['axes'] ]
+
+    if 'values' in obj:
+        if 'values' in union:
+            union_values = union['values']
+            for value in obj['values']:
+                union_value = findObj(union_values, 'title', value['title'])
+                if union_value is None:
+                    union_values.append( cloneItem(value, cnt, idx) )
+                else:
+                    joinItem(union_value, value, cnt, idx)
+
+        else:
+            union['values'] = [ cloneItem(x, cnt, idx) for x in obj['values'] ]
+
+    return union
+
+
+
 class Item:
     def __init__(self, ele, text):
         self.element = ele
@@ -93,14 +176,6 @@ class Item:
 
                 if 100 < len(text):
                     text = "省略:" + text
-
-        if len(ele.calcFrom) != 0:
-            
-            s = '↑' + '|'.join([ x.to.getTitle() for x in ele.calcFrom ])
-            if text is None:
-                text = s
-            else:
-                text += s
 
         obj = { 'type': ele.type, 'title': title, 'text': text }
         obj['children'] = [ item2.toObj() for item2 in self.children ]
@@ -147,7 +222,7 @@ class ContextNode:
             axes = []
             obj['axes'] = axes
             for axis in self.axes:
-                dt = { 'axis': axis['name'], 'members': [ nd.toObj() for nd in axis['members'].values() ] }
+                dt = { 'axis': axis['name'], 'members': [ nd.toObj() for nd in axis['members'] ] }
                 axes.append(dt)
 
         else:
@@ -155,50 +230,6 @@ class ContextNode:
             obj['values'] = [ item.toObj() for item in self.values ]
 
         return obj
-
-    # def joinObj(self, obj):
-    #     if self.time is not None:
-    #         if 'time' in obj:
-    #             assert obj['time'] == self.time
-    #         else:
-    #             obj['time'] = self.time
-    #         if not self.time in times:
-    #             times.append(self.time)
-
-    #     if self.member is not None:
-    #         if 'member' in obj:
-    #             assert obj['member'] == self.member
-    #         else:
-    #             obj['member'] = self.member
-
-    #     if len(self.axes) != 0:
-    #         if 'axes' in obj:
-    #             axes = obj['axes']
-
-    #         else:
-    #             axes = []
-    #             obj['axes'] = axes
-
-    #         for axis_name, axis in self.axes.items():
-    #             axis2 = findObj(axes, 'axis', axis_name)
-    #             if axis2 is None:
-    #             else:
-    #                 for nd in axis.values():
-    #                     nd2 = 
-    #             v1 = [ x for x in axes if x[] ==  ]
-    #             if len(v1) == 0:
-    #             else:
-    #                 axis2 = v1[0]
-    #                 for nd in axis.values():
-
-    #             dt = { 'axis': axis_name, 'members': [ nd.toObj() for mem, nd in axis.items() ] }
-    #             axes.append(dt)
-
-    #     else:
-
-    #         obj['values'] = [ item.toObj() for item in self.values ]
-
-    #     return obj
 
 class Element:
     def __init__(self):
@@ -425,7 +456,7 @@ def dumpItem(inf, item, nest):
 def setChildren(inf, ctx):
     if len(ctx.axes) != 0:
         for axis in ctx.axes:
-            for nd in axis['members'].values():
+            for nd in axis['members']:
                 setChildren(inf, nd)
 
     else:
@@ -647,15 +678,16 @@ def makeContext(inf, el, id):
     for axis_name, mem in zip(ctx.axisNames, ctx.members):
         axis = findObj(nd.axes, 'name', axis_name)      
         if axis is None:
-            axis = { 'name':axis_name, 'members':{} }
+            axis = { 'name':axis_name, 'members':[] }
             nd.axes.append(axis)
 
-        if mem in axis['members']:
-            nd = axis['members'][mem]
+        v = [ x for x in axis['members'] if x.member == mem ]
+        if len(v) != 0:
+            nd = v[0]
         else:
             nd = ContextNode()
             nd.member = mem
-            axis['members'][mem] = nd
+            axis['members'].append(nd)
 
     nd.text = ctx.text
 
@@ -941,15 +973,21 @@ def readXbrlThread(cpu_count, cpu_id, public_docs, progress):
             os.makedirs(json_dir)
 
         json_str_list = sorted(json_str_list, key=itemgetter(0))
+        union_objs = []
+        cnt = len(json_str_list)
+        for idx, (end_date, json_str) in enumerate(json_str_list):
+            objs = json.loads(json_str)
+
+            for obj in objs:
+                union_obj = findObj(union_objs, 'time', obj['time'])
+                if union_obj is None:
+                    union_objs.append( joinObj({}, obj, cnt, idx) )
+                else:
+                    joinObj(union_obj, obj, cnt, idx)
+
+
         with codecs.open('%s/%s.json' % (json_dir, edinet_code), 'w','utf-8') as f:
-
-            f.write('[\n')
-            s = ''
-            for end_date, json_str in json_str_list:
-                f.write('%s%s\n' % (s, json_str))
-                s = ','
-
-            f.write(']\n')
+            json.dump(union_objs, f, ensure_ascii=False)
 
     print('CPU:%d 終了:%d' % (cpu_id, int(time.time() - start_time)) )
 
