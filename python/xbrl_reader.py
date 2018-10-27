@@ -66,6 +66,11 @@ ctx_names = {
     "Prior4YearDuration" :"4期前連結期間",
 }
 
+def findObj(v, key, val):
+    for x in v:
+        if x[key] == val:
+            return x
+    return None
 
 class Item:
     def __init__(self, ele, text):
@@ -123,7 +128,7 @@ class ContextNode:
         self.startDate = None
         self.endDate = None
         self.instant = None
-        self.axes  = {}
+        self.axes  = []
         self.member = None
         self.values  = []
         self.text = None
@@ -141,8 +146,8 @@ class ContextNode:
         if len(self.axes) != 0:
             axes = []
             obj['axes'] = axes
-            for axis_name, axis in self.axes.items():
-                dt = { 'axis': axis_name, 'members': [ nd.toObj() for mem, nd in axis.items() ] }
+            for axis in self.axes:
+                dt = { 'axis': axis['name'], 'members': [ nd.toObj() for nd in axis['members'].values() ] }
                 axes.append(dt)
 
         else:
@@ -150,6 +155,50 @@ class ContextNode:
             obj['values'] = [ item.toObj() for item in self.values ]
 
         return obj
+
+    # def joinObj(self, obj):
+    #     if self.time is not None:
+    #         if 'time' in obj:
+    #             assert obj['time'] == self.time
+    #         else:
+    #             obj['time'] = self.time
+    #         if not self.time in times:
+    #             times.append(self.time)
+
+    #     if self.member is not None:
+    #         if 'member' in obj:
+    #             assert obj['member'] == self.member
+    #         else:
+    #             obj['member'] = self.member
+
+    #     if len(self.axes) != 0:
+    #         if 'axes' in obj:
+    #             axes = obj['axes']
+
+    #         else:
+    #             axes = []
+    #             obj['axes'] = axes
+
+    #         for axis_name, axis in self.axes.items():
+    #             axis2 = findObj(axes, 'axis', axis_name)
+    #             if axis2 is None:
+    #             else:
+    #                 for nd in axis.values():
+    #                     nd2 = 
+    #             v1 = [ x for x in axes if x[] ==  ]
+    #             if len(v1) == 0:
+    #             else:
+    #                 axis2 = v1[0]
+    #                 for nd in axis.values():
+
+    #             dt = { 'axis': axis_name, 'members': [ nd.toObj() for mem, nd in axis.items() ] }
+    #             axes.append(dt)
+
+    #     else:
+
+    #         obj['values'] = [ item.toObj() for item in self.values ]
+
+    #     return obj
 
 class Element:
     def __init__(self):
@@ -375,8 +424,8 @@ def dumpItem(inf, item, nest):
 
 def setChildren(inf, ctx):
     if len(ctx.axes) != 0:
-        for axis in ctx.axes.values():
-            for mem, nd in axis.items():
+        for axis in ctx.axes:
+            for nd in axis['members'].values():
                 setChildren(inf, nd)
 
     else:
@@ -595,19 +644,18 @@ def makeContext(inf, el, id):
 
         inf.local_context_nodes.append(nd)
 
-    for axis_name, mem in zip(ctx.axisNames, ctx.members):        
-        if axis_name in nd.axes:
-            axis = nd.axes[axis_name]
-        else:
-            axis = {}
-            nd.axes[axis_name] = axis
+    for axis_name, mem in zip(ctx.axisNames, ctx.members):
+        axis = findObj(nd.axes, 'name', axis_name)      
+        if axis is None:
+            axis = { 'name':axis_name, 'members':{} }
+            nd.axes.append(axis)
 
-        if mem in axis:
-            nd = axis[mem]
+        if mem in axis['members']:
+            nd = axis['members'][mem]
         else:
             nd = ContextNode()
             nd.member = mem
-            axis[mem] = nd
+            axis['members'][mem] = nd
 
     nd.text = ctx.text
 
