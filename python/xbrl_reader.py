@@ -6,6 +6,7 @@ import json
 import codecs
 import threading
 import time
+from operator import itemgetter
 
 start_time = time.time()
 prev_time  = start_time
@@ -108,12 +109,12 @@ class Context:
         self.startDate = None
         self.endDate = None
         self.instant = None
-        self.dimensionNames  = []
+        self.axisNames  = []
         self.members = []
         self.text = None
 
     def toString(self):
-        return "%s:%s:%s:%s:%s" % (NoneStr(self.startDate), NoneStr(self.endDate), NoneStr(self.instant), ','.join(self.dimensionNames), ','.join(self.members))
+        return "%s:%s:%s:%s:%s" % (NoneStr(self.startDate), NoneStr(self.endDate), NoneStr(self.instant), ','.join(self.axisNames), ','.join(self.members))
 
 
 class ContextNode:
@@ -122,7 +123,7 @@ class ContextNode:
         self.startDate = None
         self.endDate = None
         self.instant = None
-        self.dimensions  = {}
+        self.axes  = {}
         self.member = None
         self.values  = []
         self.text = None
@@ -137,12 +138,12 @@ class ContextNode:
         if self.member is not None:
             obj['member'] = self.member
 
-        if len(self.dimensions) != 0:
-            dimensions = []
-            obj['dimensions'] = dimensions
-            for dim, ax in self.dimensions.items():
-                dt = { 'axis': dim, 'members': [ nd.toObj() for mem, nd in ax.items() ] }
-                dimensions.append(dt)
+        if len(self.axes) != 0:
+            axes = []
+            obj['axes'] = axes
+            for axis_name, axis in self.axes.items():
+                dt = { 'axis': axis_name, 'members': [ nd.toObj() for mem, nd in axis.items() ] }
+                axes.append(dt)
 
         else:
 
@@ -330,8 +331,8 @@ def readContext(inf, el, parent, ctx):
 
         dimension = el.get("dimension")
         title = getTitleNsLabel(inf, dimension)
-        if not title in ctx.dimensionNames:
-            ctx.dimensionNames.append(title)
+        if not title in ctx.axisNames:
+            ctx.axisNames.append(title)
 
         member = getTitleNsLabel(inf, text)
 
@@ -373,9 +374,9 @@ def dumpItem(inf, item, nest):
         dumpItem(inf, item2, nest + 1)
 
 def setChildren(inf, ctx):
-    if len(ctx.dimensions) != 0:
-        for dim, ax in ctx.dimensions.items():
-            for mem, nd in ax.items():
+    if len(ctx.axes) != 0:
+        for axis in ctx.axes.values():
+            for mem, nd in axis.items():
                 setChildren(inf, nd)
 
     else:
@@ -392,28 +393,6 @@ def setChildren(inf, ctx):
                     sum_item.children.append(item)                    
 
         ctx.values = top_items
-
-
-def dumpCtx(inf, ctx, nest):
-    inf.logf.write('    ' * nest)
-    if ctx.time is not None:
-        inf.logf.write('t:%s ' % ctx.time)
-
-    if ctx.member is not None:
-        inf.logf.write('m:%s ' % ctx.member)
-
-    inf.logf.write('\n')
-    if len(ctx.dimensions) != 0:
-        tab = '    ' * (nest + 1)
-        for dim, ax in ctx.dimensions.items():
-            inf.logf.write('%sd:%s\n' % (tab, dim))
-            for mem, nd in ax.items():
-                dumpCtx(inf, nd, nest + 2)
-
-    else:
-
-        for item in ctx.values:
-            dumpItem(inf, item, nest + 1)
 
 def readCalcArcs(xsd_dic, locs, arcs):
     for el2 in arcs:
@@ -580,9 +559,9 @@ def makeContext(inf, el, id):
     ctx = Context()
 
     readContext(inf, el, None, ctx)
-    assert len(ctx.dimensionNames) == len(ctx.members)
+    assert len(ctx.axisNames) == len(ctx.members)
 
-    if len(ctx.dimensionNames) == 0:
+    if len(ctx.axisNames) == 0:
 
         assert id in ctx_names
         ctx.time = ctx_names[id]
@@ -598,7 +577,7 @@ def makeContext(inf, el, id):
         assert s in ctx_names
         ctx.time = ctx_names[s]
 
-        context_txt = ','.join(ctx.dimensionNames)
+        context_txt = ','.join(ctx.axisNames)
 
         context_txt += ':' + ','.join(ctx.members)
 
@@ -616,19 +595,19 @@ def makeContext(inf, el, id):
 
         inf.local_context_nodes.append(nd)
 
-    for dim, mem in zip(ctx.dimensionNames, ctx.members):        
-        if dim in nd.dimensions:
-            ax = nd.dimensions[dim]
+    for axis_name, mem in zip(ctx.axisNames, ctx.members):        
+        if axis_name in nd.axes:
+            axis = nd.axes[axis_name]
         else:
-            ax = {}
-            nd.dimensions[dim] = ax
+            axis = {}
+            nd.axes[axis_name] = axis
 
-        if mem in ax:
-            nd = ax[mem]
+        if mem in axis:
+            nd = axis[mem]
         else:
             nd = ContextNode()
             nd.member = mem
-            ax[mem] = nd
+            axis[mem] = nd
 
     nd.text = ctx.text
 
@@ -795,7 +774,7 @@ def readCalc(inf):
             readCalcArcs(xsd_dic, locs, arcs)
 
 def readXbrl(inf, category_name, public_doc):
-    global xbrl_idx, prev_time, prev_cnt, edinet_json_dic
+    global xbrl_idx, prev_time, prev_cnt
 
     xbrl_list = list( public_doc.glob("*.xbrl") )
     for p in xbrl_list:
@@ -868,7 +847,6 @@ def readXbrl(inf, category_name, public_doc):
 
         ctx_objs = []
         for ctx in inf.local_context_nodes:
-            # dumpCtx(inf, ctx, 0)
             ctx_objs.append(ctx.toObj())
 
         json_str = json.dumps(ctx_objs, ensure_ascii=False)
@@ -878,15 +856,21 @@ def readXbrl(inf, category_name, public_doc):
         v2 = [ x for x in dt1['values'] if x['title'] == 'EDINETコード、DEI' ]
         dt2 = v2[0]
         edinet_code = dt2['text']
+        end_date = [ x for x in dt1['values'] if x['title'] == '当会計期間終了日、DEI' ][0]['text']
         if edinet_code in edinet_json_dic:
             category_name, json_str_list = edinet_json_dic[edinet_code]
-            json_str_list.append( json_str )
+            json_str_list.append( (end_date, json_str) )
         else:
-            edinet_json_dic[edinet_code] = (category_name, [json_str])
+            edinet_json_dic[edinet_code] = (category_name, [(end_date, json_str)])
 
         # edinet_code = inst['提出日時点']['EDINETコード、DEI']
         # end_date = inst['提出日時点']['当会計期間終了日、DEI']
 
+def joinJson(json_str_list):
+    obj = {}
+    cnt = len(json_str_list)
+    for end_date, json_str in json_str_list:
+        o = json.loads(json_str)
 
 def readXbrlThread(cpu_count, cpu_id, public_docs, progress):
     inf = Inf()
@@ -908,11 +892,12 @@ def readXbrlThread(cpu_count, cpu_id, public_docs, progress):
         if not os.path.exists(json_dir):
             os.makedirs(json_dir)
 
+        json_str_list = sorted(json_str_list, key=itemgetter(0))
         with codecs.open('%s/%s.json' % (json_dir, edinet_code), 'w','utf-8') as f:
 
             f.write('[\n')
             s = ''
-            for json_str in json_str_list:
+            for end_date, json_str in json_str_list:
                 f.write('%s%s\n' % (s, json_str))
                 s = ','
 

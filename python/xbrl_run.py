@@ -40,23 +40,27 @@ if __name__ == '__main__':
 
     cpu_count = multiprocessing.cpu_count()
     # cpu_count = 1
-    # cpu_id = 0
-    progress = Array('i', [0] * cpu_count)
-    # f(cpu_count, cpu_id, public_docs_list, progress)
 
+    progress = Array('i', [0] * cpu_count)
     public_docs_list = make_public_docs_list(cpu_count)
 
-    process_list = []
-    for cpu_id in range(cpu_count):
+    if cpu_count == 1:
+        cpu_id = 0
+        f(cpu_count, cpu_id, public_docs_list[cpu_id], progress)
 
-        p = Process(target=f, args=(cpu_count, cpu_id, public_docs_list[cpu_id], progress))
+    else:
 
-        process_list.append(p)
+        process_list = []
+        for cpu_id in range(cpu_count):
 
-        p.start()
+            p = Process(target=f, args=(cpu_count, cpu_id, public_docs_list[cpu_id], progress))
+
+            process_list.append(p)
+
+            p.start()
 
 
-    for p in process_list:
-        p.join()    
+        for p in process_list:
+            p.join()    
 
     print('終了:%d' % int(time.time() - start_time) )
