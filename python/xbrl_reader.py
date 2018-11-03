@@ -967,21 +967,22 @@ def readXbrlThread(cpu_count, cpu_id, public_docs, progress):
             os.makedirs(json_dir)
 
         json_str_list = sorted(json_str_list, key=itemgetter(0))
-        union_objs = []
+        time_objs = []
         cnt = len(json_str_list)
         for idx, (end_date, json_str) in enumerate(json_str_list):
             objs = json.loads(json_str)
 
             for obj in objs:
-                union_obj = findObj(union_objs, 'time', obj['time'])
-                if union_obj is None:
-                    union_objs.append( joinObj({}, obj, cnt, idx) )
+                time_obj = findObj(time_objs, 'time', obj['time'])
+                if time_obj is None:
+                    time_objs.append( joinObj({}, obj, cnt, idx) )
                 else:
-                    joinObj(union_obj, obj, cnt, idx)
+                    joinObj(time_obj, obj, cnt, idx)
 
-
+        end_dates = [ x[0] for x in json_str_list ]
+        doc = { 'end_dates': end_dates, 'time_objs': time_objs }
         with codecs.open('%s/%s.json' % (json_dir, edinet_code), 'w','utf-8') as f:
-            json.dump(union_objs, f, ensure_ascii=False)
+            json.dump(doc, f, ensure_ascii=False)
 
     print('CPU:%d 終了:%d' % (cpu_id, int(time.time() - start_time)) )
 

@@ -13,17 +13,6 @@ var category_edinet_codes;
 var edinet_codes_select;
 var selectedCategory = null;
 
-// $(function() {
-//     json_path = '../data/json/四半期報告書/医薬品/E00816.json'
-//     $.getJSON(json_path , function(data) {
-//         var ulObj = $("#demo");
-//         var len = data.length;
-
-//         for(var i = 0; i < len; i++) {
-//             ulObj.append($("<li>").attr({"id":data[i].id}).text(data[i].name));
-//         }
-//     });
-//   });
 
 function dumpItem(obj, nest){
     tab = ' '.repeat(4 * nest);
@@ -68,12 +57,161 @@ function dumpObj(obj, nest){
     }
 }
 
-function dump(time_objs){
-    for(var time_obj of time_objs){
+function dump(doc){
+    // { 'end_dates': end_dates, 'time_objs': time_objs }
+    for(var time_obj of doc['time_objs']){
         console.log(time_obj['time'] + '----------')
         times = [ '当四半期会計期間連結時点', '当四半期会計期間連結期間', '当四半期累計期間連結期間', '当期連結時点', '当期連結期間' ];            
-        if(times.indexOf( time_obj['time'] ) != -1){
+        if(true || times.indexOf( time_obj['time'] ) != -1){
             dumpObj(time_obj, 0)
+        }
+
+        //'提出日時点'
+    }
+}
+
+function addCell(row, text, rowspan, colspan){
+    if(text == undefined){
+        text = '&nbsp;';
+    }
+    var cell1 = row.insertCell(-1);
+    if(rowspan != undefined){
+        cell1.rowSpan = rowspan;
+    }
+    if(colspan != undefined){
+        cell1.colSpan = colspan;
+    }
+
+    // Add some text to the new cells:
+    cell1.innerHTML = text;
+}
+
+function tableItem(end_dates, table, obj, nest){
+    tab = '&nbsp;'.repeat(4 * nest);
+
+    if(obj['type'] == '文字列' || obj['type'] == 'テキストブロック'){
+
+        var row = table.insertRow(-1);
+        addCell(row, tab + 'itm:' + obj['title'], end_dates.length);
+        addCell(row, obj['type'], end_dates.length);
+        addCell(row, obj['text'][0], undefined, end_dates.length);
+
+        for(var i = 1; i < obj['text'].length; i++){
+            row = table.insertRow(-1);
+            addCell(row, obj['text'][i], undefined, end_dates.length);
+        }
+    }
+    else{
+
+        var row = table.insertRow(-1);
+        addCell(row, tab + 'itm:' + obj['title']);
+        addCell(row, obj['type']);
+        for(var x of obj['text']){
+            addCell(row, x);
+        }
+    }
+
+    if(obj['children'].length != 0){
+        for(var item2 of obj['children']){
+            tableItem(end_dates, table, item2, nest + 1)
+        }
+    }
+}
+
+function tableAxis(end_dates, table, obj, nest){
+    tab = '&nbsp;'.repeat(4 * nest);
+
+    var row = table.insertRow(-1);
+    addCell(row, tab + 'axis:' + obj['axis'], undefined, 1 + 1 + end_dates.length);
+
+    for(var obj2 of obj['members']){
+        tableObj(end_dates, table, obj2, nest + 1)
+    }
+}
+
+function tableObj(end_dates, table, obj, nest){
+    tab = '&nbsp;'.repeat(4 * nest);
+
+    if('member' in obj){
+
+        var row = table.insertRow(-1);
+        addCell(row, tab + 'mem:' + obj['member'], undefined, 1 + 1 + end_dates.length);
+    }
+
+    if('values' in obj && obj['values'].length != 0){
+        for(var item of obj['values']){
+            tableItem(end_dates, table, item, nest + 1)
+        }
+    }
+
+    if('axes' in obj && obj['axes'].length != 0){
+        for(var axis of obj['axes']){
+            tableAxis(end_dates, table, axis, nest + 1)
+        }
+    }
+}
+
+function makeTable(doc){
+    var doc_div = document.getElementById('doc-div');
+    while (doc_div.firstChild) {
+        doc_div.removeChild(doc_div.firstChild);
+    }
+
+    // { 'end_dates': end_dates, 'time_objs': time_objs }
+    end_dates = doc['end_dates'];
+    for(var time_obj of doc['time_objs']){
+        console.log(time_obj['time'] + '----------')
+        times = [ '当四半期会計期間連結時点', '当四半期会計期間連結期間', '当四半期累計期間連結期間', '当期連結時点', '当期連結期間' ];            
+        if(true || times.indexOf( time_obj['time'] ) != -1){
+
+            doc_div.appendChild( document.createElement('hr') );
+
+            h1  = document.createElement('h1');
+            h1.innerHTML = time_obj['time'];
+            doc_div.appendChild(h1);
+
+            table = document.createElement('table');
+            table.border = '1';
+            doc_div.appendChild(table);
+            // table = document.getElementById(time_obj['time']);
+
+            var header;
+            if(table.tHead == null){
+
+                header = table.createTHead();
+            }
+            else{
+
+                header = table.tHead
+                header.deleteRow(0);
+            }
+
+            // Create an empty <tr> element and add it to the first position of <thead>:
+            var row = header.insertRow(-1);
+
+            // Insert a new cell (<td>) at the first position of the "new" <tr> element:
+            var cell = row.insertCell(-1);
+            cell.innerHTML = time_obj['time'];
+
+            addCell(row, '単位');
+
+            for(var end_date of end_dates){
+                cell = row.insertCell(-1);
+                cell.innerHTML = end_date;
+
+            }
+
+            new_tbody = document.createElement('tbody');
+            if(table.tBodies.length == 0){
+                table.appendChild(new_tbody)
+            }
+            else{
+
+                var old_tbody = table.tBodies[0];
+                old_tbody.parentNode.replaceChild(new_tbody, old_tbody)
+            }
+
+            tableObj(end_dates, table, time_obj, 0)
         }
 
         //'提出日時点'
@@ -88,9 +226,10 @@ function readXbrl(category_name, edinet_code){
         dataType: 'json'
     })
     .then(
-        function(time_objs) { // jsonの読み込みに成功した時
+        function(doc) { // jsonの読み込みに成功した時
             console.log('成功');
-            dump(time_objs);
+            dump(doc);
+            makeTable(doc);
         },
         function() { //jsonの読み込みに失敗した時
             console.log('失敗');
@@ -179,5 +318,7 @@ function edinet_codes_changed(){
 
 <select id='category' size="10" onchange="category_changed()"></select>
 <select id='edinet_codes' size="10" onchange="edinet_codes_changed()"></select>
+
+<div id='doc-div'></div>
 </body>
 </html>
