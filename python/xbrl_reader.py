@@ -946,12 +946,6 @@ def readXbrl(inf, category_name, public_doc):
         # edinet_code = inst['提出日時点']['EDINETコード、DEI']
         # end_date = inst['提出日時点']['当会計期間終了日、DEI']
 
-def joinJson(json_str_list):
-    obj = {}
-    cnt = len(json_str_list)
-    for end_date, json_str in json_str_list:
-        o = json.loads(json_str)
-
 def readXbrlThread(cpu_count, cpu_id, public_docs, progress):
     inf = Inf()
     

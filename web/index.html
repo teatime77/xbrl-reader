@@ -1,0 +1,183 @@
+﻿<!DOCTYPE html>
+
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta charset="utf-8" />
+<title>四半期報告書</title>
+<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.10.1/jquery.min.js"></script>
+<script type="text/javascript" src="js/main.js"></script>
+
+<script>
+var category_select;
+var category_edinet_codes;
+var edinet_codes_select;
+var selectedCategory = null;
+
+// $(function() {
+//     json_path = '../data/json/四半期報告書/医薬品/E00816.json'
+//     $.getJSON(json_path , function(data) {
+//         var ulObj = $("#demo");
+//         var len = data.length;
+
+//         for(var i = 0; i < len; i++) {
+//             ulObj.append($("<li>").attr({"id":data[i].id}).text(data[i].name));
+//         }
+//     });
+//   });
+
+function dumpItem(obj, nest){
+    tab = ' '.repeat(4 * nest);
+    console.log(tab + obj['title'] + '=' + obj['text'].join() + ':' + obj['type']);
+
+    if(obj['children'].length != 0){
+        console.log(tab + 'children:');
+        for(var item2 of obj['children']){
+            dumpItem(item2, nest + 1)
+        }
+    }
+}
+
+function dumpAxis(obj, nest){
+    tab = ' '.repeat(4 * nest);
+    console.log(tab + 'axis:' + obj['axis']);
+    console.log(tab + 'members:');
+    for(var obj2 of obj['members']){
+        dumpObj(obj2, nest + 1)
+    }
+}
+
+function dumpObj(obj, nest){
+    tab = ' '.repeat(4 * nest);
+
+    if('member' in obj){
+        console.log(tab + 'member:' + obj['member']);
+    }
+
+    if('values' in obj && obj['values'].length != 0){
+        console.log(tab + 'values:');
+        for(var item of obj['values']){
+            dumpItem(item, nest + 1)
+        }
+    }
+
+    if('axes' in obj && obj['axes'].length != 0){
+        console.log(tab + 'axes:');
+        for(var axis of obj['axes']){
+            dumpAxis(axis, nest + 1)
+        }
+    }
+}
+
+function dump(time_objs){
+    for(var time_obj of time_objs){
+        console.log(time_obj['time'] + '----------')
+        times = [ '当四半期会計期間連結時点', '当四半期会計期間連結期間', '当四半期累計期間連結期間', '当期連結時点', '当期連結期間' ];            
+        if(times.indexOf( time_obj['time'] ) != -1){
+            dumpObj(time_obj, 0)
+        }
+
+        //'提出日時点'
+    }
+}
+
+function readXbrl(category_name, edinet_code){
+    json_path = '../data/json/四半期報告書/'+ category_name + '/' + edinet_code + '.json'
+    $.ajax({ // json読み込み開始
+        type: 'GET',
+        url: json_path,
+        dataType: 'json'
+    })
+    .then(
+        function(time_objs) { // jsonの読み込みに成功した時
+            console.log('成功');
+            dump(time_objs);
+        },
+        function() { //jsonの読み込みに失敗した時
+            console.log('失敗');
+        }
+    );
+}
+
+function on_load(){
+    category_select = document.getElementById('category');
+    edinet_codes_select = document.getElementById('edinet_codes');
+
+    readXbrl('医薬品', 'E00816');
+
+    json_path = '../data/json/四半期報告書/category_edinet_codes.json'
+    $.ajax({ // json読み込み開始
+        type: 'GET',
+        url: json_path,
+        dataType: 'json'
+    })
+    .then(
+        function(time_objs) { // jsonの読み込みに成功した時
+            console.log('成功');
+
+            category_edinet_codes = time_objs;
+
+            for(var category of time_objs){
+                console.log(category['category_name']);
+                // option要素の宣言
+                var option = document.createElement('option');
+                // option要素のvalue属性に値をセット
+                // option.setAttribute('value', category['category_name']);
+                // option要素に値をセット
+                option.innerHTML = category['category_name'];
+                // 作成したoption要素をselectタグに追加
+                category_select.appendChild(option);
+            }
+
+        },
+        function() { //jsonの読み込みに失敗した時
+            console.log('失敗');
+        }
+    );
+}
+
+function category_changed(){
+    $('#edinet_codes').empty()
+
+    var idx = category_select.selectedIndex;
+    if(idx == -1){
+        selectedCategory = null;
+        return;
+    }
+
+    selectedCategory = category_edinet_codes[idx];
+
+    for(var edinet_code of selectedCategory['edinet_codes']){
+            console.log(edinet_code);
+            // option要素の宣言
+            var option = document.createElement('option');
+            // option要素のvalue属性に値をセット
+            // option.setAttribute('value', category['category_name']);
+            // option要素に値をセット
+            option.innerHTML = edinet_code;
+            // 作成したoption要素をselectタグに追加
+            edinet_codes_select.appendChild(option);
+    }
+}
+
+function edinet_codes_changed(){
+
+    var idx = edinet_codes_select.selectedIndex;
+    if(idx == -1){
+        return;
+    }
+
+    category_name = selectedCategory['category_name']
+    edinet_code = selectedCategory['edinet_codes'][idx];
+
+    readXbrl(category_name, edinet_code);
+}
+
+</script>    
+</head>
+<body onload="on_load()">
+<ul id="demo"></ul>
+
+<select id='category' size="10" onchange="category_changed()"></select>
+<select id='edinet_codes' size="10" onchange="edinet_codes_changed()"></select>
+</body>
+</html>
