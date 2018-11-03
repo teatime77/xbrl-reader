@@ -14,62 +14,6 @@ var edinet_codes_select;
 var selectedCategory = null;
 
 
-function dumpItem(obj, nest){
-    tab = ' '.repeat(4 * nest);
-    console.log(tab + obj['title'] + '=' + obj['text'].join() + ':' + obj['type']);
-
-    if(obj['children'].length != 0){
-        console.log(tab + 'children:');
-        for(var item2 of obj['children']){
-            dumpItem(item2, nest + 1)
-        }
-    }
-}
-
-function dumpAxis(obj, nest){
-    tab = ' '.repeat(4 * nest);
-    console.log(tab + 'axis:' + obj['axis']);
-    console.log(tab + 'members:');
-    for(var obj2 of obj['members']){
-        dumpObj(obj2, nest + 1)
-    }
-}
-
-function dumpObj(obj, nest){
-    tab = ' '.repeat(4 * nest);
-
-    if('member' in obj){
-        console.log(tab + 'member:' + obj['member']);
-    }
-
-    if('values' in obj && obj['values'].length != 0){
-        console.log(tab + 'values:');
-        for(var item of obj['values']){
-            dumpItem(item, nest + 1)
-        }
-    }
-
-    if('axes' in obj && obj['axes'].length != 0){
-        console.log(tab + 'axes:');
-        for(var axis of obj['axes']){
-            dumpAxis(axis, nest + 1)
-        }
-    }
-}
-
-function dump(doc){
-    // { 'end_dates': end_dates, 'time_objs': time_objs }
-    for(var time_obj of doc['time_objs']){
-        console.log(time_obj['time'] + '----------')
-        times = [ '当四半期会計期間連結時点', '当四半期会計期間連結期間', '当四半期累計期間連結期間', '当期連結時点', '当期連結期間' ];            
-        if(true || times.indexOf( time_obj['time'] ) != -1){
-            dumpObj(time_obj, 0)
-        }
-
-        //'提出日時点'
-    }
-}
-
 function addCell(row, text, rowspan, colspan){
     if(text == undefined){
         text = '&nbsp;';
@@ -227,8 +171,6 @@ function readXbrl(category_name, edinet_code){
     })
     .then(
         function(doc) { // jsonの読み込みに成功した時
-            console.log('成功');
-            dump(doc);
             makeTable(doc);
         },
         function() { //jsonの読み込みに失敗した時
@@ -251,12 +193,10 @@ function on_load(){
     })
     .then(
         function(time_objs) { // jsonの読み込みに成功した時
-            console.log('成功');
 
             category_edinet_codes = time_objs;
 
             for(var category of time_objs){
-                console.log(category['category_name']);
                 // option要素の宣言
                 var option = document.createElement('option');
                 // option要素のvalue属性に値をセット
@@ -286,7 +226,6 @@ function category_changed(){
     selectedCategory = category_edinet_codes[idx];
 
     for(var edinet_code of selectedCategory['edinet_codes']){
-            console.log(edinet_code);
             // option要素の宣言
             var option = document.createElement('option');
             // option要素のvalue属性に値をセット
