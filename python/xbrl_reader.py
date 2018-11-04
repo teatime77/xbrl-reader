@@ -239,7 +239,7 @@ class Element:
         self.type = None
         self.labels = {}
         self.calcTo = []
-        self.calcFrom = []
+        self.sorted = False
 
     def getTitle(self):
         if verboseLabel_role in self.labels:
@@ -441,14 +441,6 @@ def dumpItem(inf, item, nest):
             if 100 < len(text):
                 text = "省略:" + text
 
-    if len(ele.calcFrom) != 0:
-        
-        s = '↑' + '|'.join([ x.to.getTitle() for x in ele.calcFrom ])
-        if text is None:
-            text = s
-        else:
-            text += s
-
     inf.logf.write("%s[%s][%s][%s]\n" % (tab, ele.type, title, text))
     for item2 in item.children:
         dumpItem(inf, item2, nest + 1)
@@ -462,15 +454,19 @@ def setChildren(inf, ctx):
     else:
         assert len(ctx.values) != 0
 
-        top_items = []
+        top_items = list(ctx.values)
         for item in ctx.values:
-            parent_elements = [ x.to for x in item.element.calcFrom ]
-            sum_items = [ x for x in ctx.values if x.element in parent_elements ]
-            if len(sum_items) == 0:
-                top_items.append(item)
-            else:
-                for sum_item in sum_items:
-                    sum_item.children.append(item)                    
+
+            if not item.element.sorted:
+                item.element.sorted = True
+                item.element.calcTo = sorted(item.element.calcTo, key=lambda x: x.order)
+                
+            child_elements = [ x.to for x in item.element.calcTo ]
+            sum_items = [ x for x in ctx.values if x.element in child_elements ]
+            for sum_item in sum_items:
+                item.children.append(sum_item)
+                if sum_item in top_items:
+                    top_items.remove(sum_item)                
 
         ctx.values = top_items
 
@@ -482,6 +478,7 @@ def readCalcArcs(xsd_dic, locs, arcs):
             order = el2.get('order')
             weight = el2.get('weight')
             assert order is not None and weight is not None
+            order = float(order)
 
             from_label = attr2['from'] 
             to_label = attr2['to'] 
@@ -494,11 +491,8 @@ def readCalcArcs(xsd_dic, locs, arcs):
                 to_el = xsd_dic[to_label]
             assert from_el is not None and to_el is not None
 
-            calc = Calc(to_el, role, order, weight)
-            from_el.calcTo.append(calc)
-
-            if not from_el in [ x.to for x in to_el.calcFrom ]:
-                to_el.calcFrom.append( Calc(from_el, role, order, weight) )
+            if not to_el in [ x.to for x in from_el.calcTo ]:
+                from_el.calcTo.append( Calc(to_el, role, order, weight) )
 
 #--------------------------------------------------------------------------------------------------------------
 

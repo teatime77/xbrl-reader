@@ -5,6 +5,7 @@
 <meta charset="utf-8" />
 <title>四半期報告書</title>
 <script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.10.1/jquery.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.7.3/Chart.min.js"></script>
 <script type="text/javascript" src="js/main.js"></script>
 
 <script>
@@ -180,6 +181,7 @@ function readXbrl(category_name, edinet_code){
 }
 
 function on_load(){
+    drawChart();
     category_select = document.getElementById('category');
     edinet_codes_select = document.getElementById('edinet_codes');
 
@@ -250,9 +252,40 @@ function edinet_codes_changed(){
     readXbrl(category_name, edinet_code);
 }
 
+function drawChart(){
+//「月別データ」
+var mydata = {
+  labels: ["１月", "２月", "３月", "４月", "５月", "６月", "７月"],
+  datasets: [
+    {
+      label: '数量',
+      hoverBackgroundColor: "rgba(255,99,132,0.3)",
+      data: [65, 59, 80, 81, 56, 55, 48],
+    }
+  ]
+};
+
+//「オプション設定」
+var options = {
+    title: {    
+        display: true,
+        text: 'サンプルチャート'
+    }
+};
+
+var canvas = document.getElementById('stage');
+var chart = new Chart(canvas, {
+    type: 'bar',  //グラフの種類
+    data: mydata,  //表示するデータ
+    options: options  //オプション設定
+});
+
+}
+
 </script>    
 </head>
 <body onload="on_load()">
+<canvas id="stage"></canvas>
 <ul id="demo"></ul>
 
 <select id='category' size="10" onchange="category_changed()"></select>
