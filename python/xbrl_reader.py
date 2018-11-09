@@ -2,11 +2,13 @@ import sys
 import os
 import xml.etree.ElementTree as ET
 from pathlib import Path
+import re
 import json
 import codecs
 import threading
 import time
 from operator import itemgetter
+from multiprocessing import Array
 
 start_time = time.time()
 prev_time  = start_time
@@ -424,26 +426,6 @@ def readContext(inf, el, parent, ctx):
     for child in el:
         readContext(inf, child, label, ctx)
 
-def dumpItem(inf, item, nest):
-    tab = '    ' * nest
-    ele = item.element
-    text = item.text
-    title = ele.getTitle()
-
-    if text is None:
-        text = 'null-text'
-    else:
-        if ele.type == "テキストブロック":
-            text = "省略"
-        elif ele.type == '文字列':
-            text = text.replace('\n', ' ')
-
-            if 100 < len(text):
-                text = "省略:" + text
-
-    inf.logf.write("%s[%s][%s][%s]\n" % (tab, ele.type, title, text))
-    for item2 in item.children:
-        dumpItem(inf, item2, nest + 1)
 
 def setChildren(inf, ctx):
     if len(ctx.axes) != 0:
@@ -940,6 +922,40 @@ def readXbrl(inf, category_name, public_doc):
         # edinet_code = inst['提出日時点']['EDINETコード、DEI']
         # end_date = inst['提出日時点']['当会計期間終了日、DEI']
 
+def make_public_docs_list(cpu_count):
+    report_path = root_dir + '/data/EDINET/四半期報告書'
+    category_edinet_codes = []
+
+    public_docs_list = [ [] for i in range(cpu_count) ]
+    for category_dir in Path(report_path).glob("*"):
+        category_name = os.path.basename(str(category_dir))
+
+        edinet_codes = []
+        category_edinet_codes.append( { 'category_name': category_name, 'edinet_codes': edinet_codes}   )
+
+        for public_doc in category_dir.glob("*/*/XBRL/PublicDoc"):
+            xbrl_path_list = list(public_doc.glob('jpcrp*.xbrl'))
+            assert len(xbrl_path_list) == 1
+
+            xbrl_path = xbrl_path_list[0]
+            xbrl_basename = os.path.basename(str(xbrl_path))
+            items = re.split('[-_]', xbrl_basename)
+            edinet_code = items[3]
+            char_sum = sum(ord(x) for x in edinet_code)
+            cpu_idx  = char_sum % cpu_count
+
+            public_docs_list[cpu_idx].append( [category_name, public_doc] )
+
+            if not edinet_code in edinet_codes:
+                edinet_codes.append(edinet_code)
+
+    json_path = "%s/data/json/四半期報告書/category_edinet_codes.json" % root_dir
+    with codecs.open(json_path, 'w','utf-8') as json_f:
+        json.dump(category_edinet_codes, json_f, ensure_ascii=False)
+
+    return category_edinet_codes, public_docs_list
+
+
 def readXbrlThread(cpu_count, cpu_id, public_docs, progress):
     inf = Inf()
     
@@ -984,3 +1000,13 @@ inf = Inf()
 readCalc(inf)
 
 GetSchemaLabelDic(inf, "http://www.xbrl.org/2003/instance")
+
+if __name__ == '__main__':
+
+    cpu_count = 1
+    cpu_id = 0
+
+    progress = Array('i', [0] * cpu_count)
+    category_edinet_codes, public_docs_list = make_public_docs_list(cpu_count)
+
+    readXbrlThread(cpu_count, cpu_id, public_docs_list[cpu_id], progress)
