@@ -6,7 +6,7 @@
 <title>四半期報告書</title>
 <script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.10.1/jquery.min.js"></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.7.3/Chart.min.js"></script>
-<script type="text/javascript" src="js/main.js"></script>
+<script type="text/javascript" src="js/util.js"></script>
 
 <script>
 var category_select;
@@ -116,20 +116,17 @@ function makeTable(doc){
     // { 'end_dates': end_dates, 'time_objs': time_objs }
     end_dates = doc['end_dates'];
     for(var time_obj of doc['time_objs']){
-        console.log(time_obj['time'] + '----------')
-        times = [ '当四半期会計期間連結時点', '当四半期会計期間連結期間', '当四半期累計期間連結期間', '当期連結時点', '当期連結期間' ];            
-        if(true || times.indexOf( time_obj['time'] ) != -1){
+        if(true){
 
             doc_div.appendChild( document.createElement('hr') );
 
             h1  = document.createElement('h1');
-            h1.innerHTML = time_obj['time'];
+            h1.innerHTML = time_names[time_obj['time']];
             doc_div.appendChild(h1);
 
             table = document.createElement('table');
             table.border = '1';
             doc_div.appendChild(table);
-            // table = document.getElementById(time_obj['time']);
 
             var header;
             if(table.tHead == null){
@@ -147,7 +144,7 @@ function makeTable(doc){
 
             // Insert a new cell (<td>) at the first position of the "new" <tr> element:
             var cell = row.insertCell(-1);
-            cell.innerHTML = time_obj['time'];
+            cell.innerHTML = time_names[time_obj['time']];
 
             addCell(row, '単位');
 

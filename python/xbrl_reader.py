@@ -25,7 +25,6 @@ url2path = {}
 xbrl_idx = 0
 
 edinet_json_dic = {}
-times = []
 
 url2path_lock = threading.Lock()
 
@@ -47,7 +46,7 @@ type_dic = {
     "xbrli:pureItemType" : "純粋型"
 }
 
-ctx_names = {
+time_names = {
     "FilingDateInstant":"提出日時点",
     "CurrentYTDDuration":"当四半期累計期間連結期間",
     "CurrentQuarterInstant":"当四半期会計期間連結時点",
@@ -214,8 +213,6 @@ class ContextNode:
         obj = {}
         if self.time is not None:
             obj['time'] = self.time
-            if not self.time in times:
-                times.append(self.time)
 
         if self.member_ele is not None:
 
@@ -629,17 +626,16 @@ def makeContext(inf, el, id):
 
     if len(ctx.axis_eles) == 0:
 
-        assert id in ctx_names
-        ctx.time = ctx_names[id]
+        assert id in time_names
+        ctx.time = id
 
     else:
 
-        ctx.time = ""
         k = id.find('_')
         assert k != -1
         s = id[:k]
-        assert s in ctx_names
-        ctx.time = ctx_names[s]
+        assert s in time_names
+        ctx.time = s
 
     v = [ x for x in inf.local_context_nodes if x.time == ctx.time ]
     if len(v) != 0:
@@ -910,20 +906,28 @@ def readXbrl(inf, category_name, public_doc):
 
         json_str = json.dumps(ctx_objs, ensure_ascii=False)
 
-        v1 = [ x for x in ctx_objs if x['time'] == '提出日時点' ]
+        v1 = [ x for x in ctx_objs if x['time'] == 'FilingDateInstant' ] # 提出日時点
         dt1 = v1[0]
         v2 = [ x for x in dt1['values'] if x['name'] == 'EDINETCodeDEI' ]
         dt2 = v2[0]
         edinet_code = dt2['text']
-        end_date = [ x for x in dt1['values'] if x['name'] == 'CurrentPeriodEndDateDEI' ][0]['text']
+        end_date = [ x for x in dt1['values'] if x['name'] == 'CurrentPeriodEndDateDEI' ][0]['text'] # 当会計期間終了日
+        num_submission = findObj(dt1['values'], 'name', 'NumberOfSubmissionDEI')['text'] # 提出回数
+
         if edinet_code in edinet_json_dic:
             category_name, json_str_list = edinet_json_dic[edinet_code]
-            json_str_list.append( (end_date, json_str) )
-        else:
-            edinet_json_dic[edinet_code] = (category_name, [(end_date, json_str)])
 
-        # edinet_code = inst['提出日時点']['EDINETコード、DEI']
-        # end_date = inst['提出日時点']['当会計期間終了日、DEI']
+            json_str_list.append( [end_date, num_submission, json_str] )
+
+            revisions = [x for x in json_str_list if x[0] == end_date]
+            if 2 <= len(revisions):
+                revisions = sorted(revisions, key=lambda x: x[1])
+                for x in revisions[:-1]:
+                    assert x in json_str_list
+                    json_str_list.remove(x)
+
+        else:
+            edinet_json_dic[edinet_code] = (category_name, [[end_date, num_submission, json_str]])
 
 def make_public_docs_list(cpu_count):
     report_path = root_dir + '/data/EDINET/四半期報告書'
@@ -970,8 +974,6 @@ def readXbrlThread(cpu_count, cpu_id, public_docs, progress):
     for category_name, public_doc in public_docs:
         readXbrl(inf, category_name, public_doc)
 
-    for s in times:
-        inf.logf.write('%s\n' % s)
     inf.logf.close()
 
     for edinet_code, (category_name, json_str_list) in edinet_json_dic.items():
@@ -979,10 +981,10 @@ def readXbrlThread(cpu_count, cpu_id, public_docs, progress):
         if not os.path.exists(json_dir):
             os.makedirs(json_dir)
 
-        json_str_list = sorted(json_str_list, key=itemgetter(0))
+        json_str_list = sorted(json_str_list, key=lambda x: x[0])
         time_objs = []
         cnt = len(json_str_list)
-        for idx, (end_date, json_str) in enumerate(json_str_list):
+        for idx, (end_date, num_submission, json_str) in enumerate(json_str_list):
             objs = json.loads(json_str)
 
             for obj in objs:
