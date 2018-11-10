@@ -64,6 +64,14 @@ time_names = {
     "Prior3YearDuration" :"3期前連結期間",
     "Prior4YearInstant"  :"4期前連結時点",
     "Prior4YearDuration" :"4期前連結期間",
+    "Prior2InterimInstant":"Prior2InterimInstant",
+    "InterimInstant":"InterimInstant",
+    "InterimDuration":"InterimDuration",
+    "Prior1InterimInstant":"Prior1InterimInstant",
+    "Prior1InterimDuration":"Prior1InterimDuration",
+    "Prior2InterimDuration":"Prior2InterimDuration",
+    "Prior5YearInstant":"Prior5YearInstant",
+    "Prior5YearDuration":"Prior5YearDuration",
 }
 
 def findObj(v, key, val):
@@ -626,7 +634,9 @@ def makeContext(inf, el, id):
 
     if len(ctx.axis_eles) == 0:
 
-        assert id in time_names
+        if not id in time_names:
+            print(id, '-----------------------------------------------------')
+        # assert id in time_names
         ctx.time = id
 
     else:
@@ -634,7 +644,9 @@ def makeContext(inf, el, id):
         k = id.find('_')
         assert k != -1
         s = id[:k]
-        assert s in time_names
+        if not s in time_names:
+            print(s, '-----------------------------------------------------')
+        # assert s in time_names
         ctx.time = s
 
     v = [ x for x in inf.local_context_nodes if x.time == ctx.time ]
@@ -924,7 +936,7 @@ def readXbrl(inf, category_name, public_doc):
                 revisions = sorted(revisions, key=lambda x: x[1])
                 for x in revisions[:-1]:
                     assert x in json_str_list
-                    json_str_list.remove(x)
+                    # json_str_list.remove(x)
 
         else:
             edinet_json_dic[edinet_code] = (category_name, [[end_date, num_submission, json_str]])
@@ -956,7 +968,7 @@ def make_public_docs_list(cpu_count):
             if not edinet_code in edinet_codes:
                 edinet_codes.append(edinet_code)
 
-    json_path = "%s/data/json/四半期報告書/category_edinet_codes.json" % root_dir
+    json_path = "%s/web/json/category_edinet_codes.json" % root_dir
     with codecs.open(json_path, 'w','utf-8') as json_f:
         json.dump(category_edinet_codes, json_f, ensure_ascii=False)
 
@@ -977,7 +989,7 @@ def readXbrlThread(cpu_count, cpu_id, public_docs, progress):
     inf.logf.close()
 
     for edinet_code, (category_name, json_str_list) in edinet_json_dic.items():
-        json_dir = "%s/data/json/四半期報告書/%s" % (root_dir, category_name)
+        json_dir = "%s/web/json/%s" % (root_dir, category_name)
         if not os.path.exists(json_dir):
             os.makedirs(json_dir)
 

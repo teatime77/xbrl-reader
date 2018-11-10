@@ -16,4 +16,12 @@ time_names = {
     "Prior3YearDuration" :"3期前連結期間",
     "Prior4YearInstant"  :"4期前連結時点",
     "Prior4YearDuration" :"4期前連結期間",
+    "Prior2InterimInstant":"Prior2InterimInstant",
+    "InterimInstant":"InterimInstant",
+    "InterimDuration":"InterimDuration",
+    "Prior1InterimInstant":"Prior1InterimInstant",
+    "Prior1InterimDuration":"Prior1InterimDuration",
+    "Prior2InterimDuration":"Prior2InterimDuration",
+    "Prior5YearInstant":"Prior5YearInstant",
+    "Prior5YearDuration":"Prior5YearDuration",
 };

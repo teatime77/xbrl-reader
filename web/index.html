@@ -172,7 +172,7 @@ function makeTable(doc){
 }
 
 function readXbrl(category_name, edinet_code){
-    json_path = '../data/json/四半期報告書/'+ category_name + '/' + edinet_code + '.json'
+    json_path = 'json/'+ category_name + '/' + edinet_code + '.json'
     $.ajax({ // json読み込み開始
         type: 'GET',
         url: json_path,
@@ -197,7 +197,7 @@ function on_load(){
 
     readXbrl('医薬品', 'E00816');
 
-    json_path = '../data/json/四半期報告書/category_edinet_codes.json'
+    json_path = 'json/category_edinet_codes.json'
     $.ajax({ // json読み込み開始
         type: 'GET',
         url: json_path,
