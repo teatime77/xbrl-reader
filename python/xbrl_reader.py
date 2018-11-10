@@ -23,6 +23,7 @@ label_dics = {}
 
 url2path = {}
 xbrl_idx = 0
+xbrl_basename = None
 
 edinet_json_dic = {}
 
@@ -173,7 +174,16 @@ class Item:
         self.text    = text
         self.children = []
 
-    def toObj(self):
+    def itemToObj(self, ancestors):
+        if self in ancestors:
+            print(xbrl_basename)
+            for x in ancestors + [self]:
+                name, label, verbose_label = x.element.getLabel()
+                print(label)
+
+        assert not self in ancestors
+        ancestors.append(self)
+
         ele = self.element
         text = self.text
 
@@ -191,8 +201,9 @@ class Item:
         name, label, verbose_label = ele.getLabel()
 
         obj = { 'type': ele.type, 'name':name, 'label':label, 'verbose_label':verbose_label, 'text': text }
-        obj['children'] = [ item2.toObj() for item2 in self.children ]
+        obj['children'] = [ item2.itemToObj(ancestors) for item2 in self.children ]
 
+        ancestors.pop()
         return obj
 
 
@@ -239,7 +250,7 @@ class ContextNode:
 
         else:
 
-            obj['values'] = [ item.toObj() for item in self.values ]
+            obj['values'] = [ item.itemToObj([]) for item in self.values ]
 
         return obj
 
@@ -841,18 +852,23 @@ def readCalc(inf):
             readCalcArcs(xsd_dic, locs, arcs)
 
 def readXbrl(inf, category_name, public_doc):
-    global xbrl_idx, prev_time, prev_cnt
+    global xbrl_idx, prev_time, prev_cnt, xbrl_basename
 
     xbrl_list = list( public_doc.glob("*.xbrl") )
     for p in xbrl_list:
 
         xbrl_path = str(p)
-        basename = os.path.basename(xbrl_path)
-        if basename.startswith('ifrs-'):
+        xbrl_basename = os.path.basename(xbrl_path)
+
+        if xbrl_basename in [ 'jpcrp040300-q3r-001_E27273-000_2015-12-31_01_2016-02-12.xbrl', 'jpcrp030000-asr-001_E00273-000_2015-03-31_01_2015-06-19.xbrl', 'jpcrp030000-asr-001_E00273-000_2014-03-31_01_2014-06-20.xbrl' ]:
+            print('循環参照をスキップ', xbrl_basename)
+            continue
+
+        if xbrl_basename.startswith('ifrs-'):
             assert len(xbrl_list) == 2
             continue
 
-        # if basename != 'jpcrp040300-q2r-001_E03369-000_2016-09-30_01_2016-11-14.xbrl':
+        # if xbrl_basename != 'jpcrp040300-q2r-001_E03369-000_2016-09-30_01_2016-11-14.xbrl':
         #     continue
 
         xbrl_idx += 1
@@ -956,9 +972,9 @@ def make_public_docs_list(cpu_count):
             xbrl_path_list = list(public_doc.glob('jpcrp*.xbrl'))
             assert len(xbrl_path_list) == 1
 
-            xbrl_path = xbrl_path_list[0]
-            xbrl_basename = os.path.basename(str(xbrl_path))
-            items = re.split('[-_]', xbrl_basename)
+            xbrl_path_0 = xbrl_path_list[0]
+            xbrl_path_0_basename = os.path.basename(str(xbrl_path_0))
+            items = re.split('[-_]', xbrl_path_0_basename)
             edinet_code = items[3]
             char_sum = sum(ord(x) for x in edinet_code)
             cpu_idx  = char_sum % cpu_count
