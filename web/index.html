@@ -14,6 +14,11 @@ var category_edinet_codes;
 var edinet_codes_select;
 var selectedCategory = null;
 
+var show_name = false;
+var show_label = true;
+var show_verbose_label = false;
+
+var cur_doc = undefined;
 
 function addCell(row, text, rowspan, colspan){
     if(text == undefined){
@@ -31,13 +36,19 @@ function addCell(row, text, rowspan, colspan){
     cell1.innerHTML = text;
 }
 
+function getLabel(obj){
+    if(show_name) return obj['name'];
+    if(show_label) return obj['label'];
+    if(show_verbose_label) return obj['verbose_label'];
+}
+
 function tableItem(end_dates, table, obj, nest){
     tab = '&nbsp;'.repeat(4 * nest);
 
     if(obj['type'] == '文字列' || obj['type'] == 'テキストブロック'){
 
         var row = table.insertRow(-1);
-        addCell(row, tab + 'itm:' + obj['title'], end_dates.length);
+        addCell(row, tab + 'itm:' + getLabel(obj), end_dates.length);
         addCell(row, obj['type'], end_dates.length);
         addCell(row, obj['text'][0], undefined, end_dates.length);
 
@@ -49,7 +60,7 @@ function tableItem(end_dates, table, obj, nest){
     else{
 
         var row = table.insertRow(-1);
-        addCell(row, tab + 'itm:' + obj['title']);
+        addCell(row, tab + 'itm:' + getLabel(obj));
         addCell(row, obj['type']);
         for(var x of obj['text']){
             addCell(row, x);
@@ -67,7 +78,7 @@ function tableAxis(end_dates, table, obj, nest){
     tab = '&nbsp;'.repeat(4 * nest);
 
     var row = table.insertRow(-1);
-    addCell(row, tab + 'axis:' + obj['axis'], undefined, 1 + 1 + end_dates.length);
+    addCell(row, tab + 'axis:' + getLabel(obj), undefined, 1 + 1 + end_dates.length);
 
     for(var obj2 of obj['members']){
         tableObj(end_dates, table, obj2, nest + 1)
@@ -77,10 +88,10 @@ function tableAxis(end_dates, table, obj, nest){
 function tableObj(end_dates, table, obj, nest){
     tab = '&nbsp;'.repeat(4 * nest);
 
-    if('member' in obj){
+    if('name' in obj){
 
         var row = table.insertRow(-1);
-        addCell(row, tab + 'mem:' + obj['member'], undefined, 1 + 1 + end_dates.length);
+        addCell(row, tab + 'mem:' + getLabel(obj), undefined, 1 + 1 + end_dates.length);
     }
 
     if('values' in obj && obj['values'].length != 0){
@@ -172,7 +183,9 @@ function readXbrl(category_name, edinet_code){
     })
     .then(
         function(doc) { // jsonの読み込みに成功した時
-            makeTable(doc);
+
+            cur_doc = doc;
+            makeTable(cur_doc);
         },
         function() { //jsonの読み込みに失敗した時
             console.log('失敗');
@@ -214,6 +227,22 @@ function on_load(){
             console.log('失敗');
         }
     );
+}
+
+function label_type_changed(){
+    var idx = document.getElementById('label_type').selectedIndex;
+    if(idx == -1){
+
+        return;
+    }
+    show_name          = (idx == 0);
+    show_label         = (idx == 1);
+    show_verbose_label = (idx == 2);
+
+    if(cur_doc != undefined){
+
+        makeTable(cur_doc);
+    }
 }
 
 function category_changed(){
@@ -287,6 +316,12 @@ var chart = new Chart(canvas, {
 <body onload="on_load()">
 <canvas id="stage"></canvas>
 <ul id="demo"></ul>
+
+<select id='label_type' size="3" onchange="label_type_changed()">
+    <option>項目名</option>
+    <option selected>ラベル</option>
+    <option>冗長ラベル</option>
+</select>
 
 <select id='category' size="10" onchange="category_changed()"></select>
 <select id='edinet_codes' size="10" onchange="edinet_codes_changed()"></select>

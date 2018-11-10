@@ -31,7 +31,6 @@ url2path_lock = threading.Lock()
 
 label_role = "http://www.xbrl.org/2003/role/label"
 verboseLabel_role = "http://www.xbrl.org/2003/role/verboseLabel"
-terseLabel_role = "http://www.xbrl.org/2003/role/terseLabel"
 
 type_dic = {
     "xbrli:stringItemType" : "文字列",
@@ -74,8 +73,16 @@ def findObj(v, key, val):
             return x
     return None
 
+def copyLabel(dst, src):
+    dst['name']          = src['name']
+    dst['label']         = src['label']
+    dst['verbose_label'] = src['verbose_label']
+
+
 def cloneItem(obj, cnt, idx):
-    union = { 'type':obj['type'], 'title':obj['title'], 'text': [None] * cnt }
+    union = { 'type':obj['type'], 'text': [None] * cnt }
+    copyLabel(union, obj)
+
     union['text'][idx] = obj['text']
 
     union['children'] = [ cloneItem(x, cnt, idx) for x in obj['children'] ]
@@ -88,7 +95,7 @@ def joinItem(union, obj, cnt, idx):
 
     union_children = union['children']
     for child in obj['children']:
-        union_child = findObj(union_children, 'title', child['title'])
+        union_child = findObj(union_children, 'name', child['name'])
         if union_child is None:
             union_children.append( cloneItem(child, cnt, idx) )
         else:
@@ -97,21 +104,19 @@ def joinItem(union, obj, cnt, idx):
     return union
 
 def joinAxis(union_axis, axis, cnt, idx):
-    assert 'axis' in axis
-    if 'axis' in union_axis:
-        assert union_axis['axis'] == axis['axis']
+    assert 'name' in axis and 'name' in union_axis
+    assert union_axis['name'] == axis['name']
+    assert 'members' in axis and 'members' in union_axis
 
-        assert 'members' in axis and 'members' in union_axis
-        union_members = union_axis['members']
-        for member in axis['members']:
-            union_member = findObj(union_members, 'member', member['member'])
-            if union_member is None:
-                union_members.append( joinObj({}, member, cnt, idx) )
-            else:
-                joinObj(union_member, member, cnt, idx)
-    else:
-        union_axis['axis'] = axis['axis']
-        union_axis['members'] = [ joinObj({}, member, cnt, idx) for member in axis['members'] ]
+    union_members = union_axis['members']
+    for member in axis['members']:
+        union_member = findObj(union_members, 'name', member['name'])
+        if union_member is None:
+            union_member = {}
+            copyLabel(union_member, member)
+            union_members.append( joinObj(union_member, member, cnt, idx) )
+        else:
+            joinObj(union_member, member, cnt, idx)
 
     return union_axis
 
@@ -122,29 +127,27 @@ def joinObj(union, obj, cnt, idx):
         else:
             union['time'] = obj['time']
 
-    if 'member' in obj:
-        if 'member' in union:
-            assert union['member'] == obj['member']
-        else:
-            union['member'] = obj['member']
-
     if 'axes' in obj:
         if 'axes' in union:
             union_axes = union['axes']
-            for axis in obj['axes']:
-                union_axis = findObj(union_axes, 'axis', axis['axis'])
-                if union_axis is None:
-                    union_axes.append( joinAxis({}, axis, cnt, idx) )
-                else:
-                    joinAxis(union_axis, axis, cnt, idx)
         else:
-            union['axes'] = [ joinAxis({}, axis, cnt, idx) for axis in obj['axes'] ]
+            union_axes = []
+            union['axes'] = union_axes
+
+        for axis in obj['axes']:
+            union_axis = findObj(union_axes, 'name', axis['name'])
+            if union_axis is None:
+                union_axis = { 'members':[] }
+                copyLabel(union_axis, axis)
+                union_axes.append( union_axis )
+
+            joinAxis(union_axis, axis, cnt, idx)
 
     if 'values' in obj:
         if 'values' in union:
             union_values = union['values']
             for value in obj['values']:
-                union_value = findObj(union_values, 'title', value['title'])
+                union_value = findObj(union_values, 'name', value['name'])
                 if union_value is None:
                     union_values.append( cloneItem(value, cnt, idx) )
                 else:
@@ -166,7 +169,6 @@ class Item:
     def toObj(self):
         ele = self.element
         text = self.text
-        title = ele.getTitle()
 
         if text is None:
             text = 'null-text'
@@ -179,7 +181,9 @@ class Item:
                 if 100 < len(text):
                     text = "省略:" + text
 
-        obj = { 'type': ele.type, 'title': title, 'text': text }
+        name, label, verbose_label = ele.getLabel()
+
+        obj = { 'type': ele.type, 'name':name, 'label':label, 'verbose_label':verbose_label, 'text': text }
         obj['children'] = [ item2.toObj() for item2 in self.children ]
 
         return obj
@@ -191,12 +195,9 @@ class Context:
         self.startDate = None
         self.endDate = None
         self.instant = None
-        self.axisNames  = []
-        self.members = []
-        self.text = None
 
-    def toString(self):
-        return "%s:%s:%s:%s:%s" % (NoneStr(self.startDate), NoneStr(self.endDate), NoneStr(self.instant), ','.join(self.axisNames), ','.join(self.members))
+        self.axis_eles  = []
+        self.member_eles = []
 
 
 class ContextNode:
@@ -206,9 +207,8 @@ class ContextNode:
         self.endDate = None
         self.instant = None
         self.axes  = []
-        self.member = None
+        self.member_ele = None
         self.values  = []
-        self.text = None
 
     def toObj(self):
         obj = {}
@@ -217,14 +217,19 @@ class ContextNode:
             if not self.time in times:
                 times.append(self.time)
 
-        if self.member is not None:
-            obj['member'] = self.member
+        if self.member_ele is not None:
+
+            name, label, verbose_label = self.member_ele.getLabel()
+            obj['name']          = name
+            obj['label']         = label
+            obj['verbose_label'] = verbose_label
 
         if len(self.axes) != 0:
             axes = []
             obj['axes'] = axes
             for axis in self.axes:
-                dt = { 'axis': axis['name'], 'members': [ nd.toObj() for nd in axis['members'] ] }
+                dt = { 'members': [ nd.toObj() for nd in axis['members'] ] }
+                copyLabel(dt, axis)
                 axes.append(dt)
 
         else:
@@ -243,16 +248,20 @@ class Element:
         self.calcTo = []
         self.sorted = False
 
-    def getTitle(self):
+    def getLabel(self):
+        verbose_label = None
+        label = None
+
         if verboseLabel_role in self.labels:
-            return self.labels[verboseLabel_role]
-        elif label_role in self.labels:
-            return self.labels[label_role]
-        elif terseLabel_role in self.labels:
-            return self.labels[terseLabel_role]
-        else:
+            verbose_label = self.labels[verboseLabel_role]
+
+        if label_role in self.labels:
+            label = self.labels[label_role]
+
+        if verbose_label is None and label is None:
             assert self.url in ['http://www.xbrl.org/2003/instance', 'http://www.w3.org/2001/XMLSchema']
-            return self.name
+
+        return self.name, label, verbose_label
 
 
 class Calc:
@@ -342,9 +351,8 @@ def getTitleNsLabel(inf, text):
     label      = v1[1]
 
     ele = getElement(inf, ns_url, label)
-    title = ele.getTitle()
 
-    return title
+    return ele
 
 def ReadLabel(el, xsd_dic, loc_dic, resource_dic):
     if el.tag[0] == '{':
@@ -364,7 +372,7 @@ def ReadLabel(el, xsd_dic, loc_dic, resource_dic):
 
             attr = getAttribs(el)
             if 'label' in attr and 'role' in attr:
-                if attr['role'] in [ label_role, verboseLabel_role, terseLabel_role ]:
+                if attr['role'] in [ label_role, verboseLabel_role ]:
                     resource_dic[ attr['label'] ] = { 'role':attr['role'], 'text': el.text }
 
             id = el.get("id")
@@ -412,13 +420,15 @@ def readContext(inf, el, parent, ctx):
         assert parent == "scenario"
 
         dimension = el.get("dimension")
-        title = getTitleNsLabel(inf, dimension)
-        if not title in ctx.axisNames:
-            ctx.axisNames.append(title)
+        dimension_ele = getTitleNsLabel(inf, dimension)
 
-        member = getTitleNsLabel(inf, text)
+        if not dimension_ele in ctx.axis_eles:
+            ctx.axis_eles.append(dimension_ele)
 
-        ctx.members.append(member)
+
+        member_ele = getTitleNsLabel(inf, text)
+
+        ctx.member_eles.append(member_ele)
 
     else:
         assert label in [ "context", "entity", "period", "scenario" ]
@@ -615,14 +625,12 @@ def makeContext(inf, el, id):
     ctx = Context()
 
     readContext(inf, el, None, ctx)
-    assert len(ctx.axisNames) == len(ctx.members)
+    assert len(ctx.axis_eles) == len(ctx.member_eles)
 
-    if len(ctx.axisNames) == 0:
+    if len(ctx.axis_eles) == 0:
 
         assert id in ctx_names
         ctx.time = ctx_names[id]
-
-        ctx.text = ctx.time
 
     else:
 
@@ -632,12 +640,6 @@ def makeContext(inf, el, id):
         s = id[:k]
         assert s in ctx_names
         ctx.time = ctx_names[s]
-
-        context_txt = ','.join(ctx.axisNames)
-
-        context_txt += ':' + ','.join(ctx.members)
-
-        ctx.text = ctx.time + "@" + context_txt
 
     v = [ x for x in inf.local_context_nodes if x.time == ctx.time ]
     if len(v) != 0:
@@ -651,21 +653,22 @@ def makeContext(inf, el, id):
 
         inf.local_context_nodes.append(nd)
 
-    for axis_name, mem in zip(ctx.axisNames, ctx.members):
-        axis = findObj(nd.axes, 'name', axis_name)      
+    for axis_ele, member_ele in zip(ctx.axis_eles, ctx.member_eles):
+        name, label, verbose_label = axis_ele.getLabel()
+        axis = findObj(nd.axes, 'name', name)      
         if axis is None:
-            axis = { 'name':axis_name, 'members':[] }
+            axis = { 'name':name, 'label':label, 'verbose_label':verbose_label, 'members':[] }
             nd.axes.append(axis)
 
-        v = [ x for x in axis['members'] if x.member == mem ]
+        v = [ x for x in axis['members'] if x.member_ele == member_ele ]
         if len(v) != 0:
             nd = v[0]
         else:
-            nd = ContextNode()
-            nd.member = mem
-            axis['members'].append(nd)
 
-    nd.text = ctx.text
+            nd = ContextNode()
+
+            nd.member_ele = member_ele
+            axis['members'].append(nd)
 
     inf.local_context_dic[id] = nd
 
@@ -909,10 +912,10 @@ def readXbrl(inf, category_name, public_doc):
 
         v1 = [ x for x in ctx_objs if x['time'] == '提出日時点' ]
         dt1 = v1[0]
-        v2 = [ x for x in dt1['values'] if x['title'] == 'EDINETコード、DEI' ]
+        v2 = [ x for x in dt1['values'] if x['name'] == 'EDINETCodeDEI' ]
         dt2 = v2[0]
         edinet_code = dt2['text']
-        end_date = [ x for x in dt1['values'] if x['title'] == '当会計期間終了日、DEI' ][0]['text']
+        end_date = [ x for x in dt1['values'] if x['name'] == 'CurrentPeriodEndDateDEI' ][0]['text']
         if edinet_code in edinet_json_dic:
             category_name, json_str_list = edinet_json_dic[edinet_code]
             json_str_list.append( (end_date, json_str) )
