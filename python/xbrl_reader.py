@@ -47,33 +47,37 @@ type_dic = {
     "xbrli:pureItemType" : "純粋型"
 }
 
-time_names = {
-    "FilingDateInstant":"提出日時点",
-    "CurrentYTDDuration":"当四半期累計期間連結期間",
-    "CurrentQuarterInstant":"当四半期会計期間連結時点",
-    "CurrentQuarterDuration":"当四半期会計期間連結期間",
-    "Prior1YTDDuration":"前年度同四半期累計期間連結期間",
-    "Prior1QuarterInstant":"前年度同四半期会計期間連結時点",
-    "Prior1QuarterDuration":"前年度同四半期会計期間連結期間",
-    "CurrentYearInstant" :"当期連結時点",
-    "CurrentYearDuration":"当期連結期間",
-    "Prior1YearInstant"  :"前期連結時点",
-    "Prior1YearDuration" :"前期連結期間",
-    "Prior2YearInstant"  :"前々期連結時点",
-    "Prior2YearDuration" :"前々期連結期間",
-    "Prior3YearInstant"  :"3期前連結時点",
-    "Prior3YearDuration" :"3期前連結期間",
-    "Prior4YearInstant"  :"4期前連結時点",
-    "Prior4YearDuration" :"4期前連結期間",
-    "Prior2InterimInstant":"Prior2InterimInstant",
-    "InterimInstant":"InterimInstant",
-    "InterimDuration":"InterimDuration",
-    "Prior1InterimInstant":"Prior1InterimInstant",
-    "Prior1InterimDuration":"Prior1InterimDuration",
-    "Prior2InterimDuration":"Prior2InterimDuration",
-    "Prior5YearInstant":"Prior5YearInstant",
-    "Prior5YearDuration":"Prior5YearDuration",
-}
+time_names_list = [
+    ("FilingDateInstant"    , "提出日時点"),
+    ("CurrentYearInstant"   ,"当期連結時点"),
+    ("CurrentYearDuration"  , "当期連結期間"),
+    ("CurrentQuarterInstant", "当四半期会計期間連結時点"),
+    ("CurrentQuarterDuration", "当四半期会計期間連結期間"),
+    ("CurrentYTDDuration"   , "当四半期累計期間連結期間"),
+    ("Prior1YTDDuration"    , "前年度同四半期累計期間連結期間"),
+    ("Prior1QuarterInstant" , "前年度同四半期会計期間連結時点"),
+    ("Prior1QuarterDuration", "前年度同四半期会計期間連結期間"),
+    ("Prior1YearInstant"    , "前期連結時点"),
+    ("Prior1YearDuration"   , "前期連結期間"),
+    ("Prior2YearInstant"    , "前々期連結時点"),
+    ("Prior2YearDuration"   ,"前々期連結期間"),
+    ("Prior3YearInstant"    ,"3期前連結時点"),
+    ("Prior3YearDuration"   ,"3期前連結期間"),
+    ("Prior4YearInstant"    ,"4期前連結時点"),
+    ("Prior4YearDuration"   ,"4期前連結期間"),
+    ("Prior2InterimInstant" , "Prior2InterimInstant"),
+    ("InterimInstant"       , "InterimInstant"),
+    ("InterimDuration"      , "InterimDuration"),
+    ("Prior1InterimInstant" , "Prior1InterimInstant"),
+    ("Prior1InterimDuration", "Prior1InterimDuration"),
+    ("Prior2InterimDuration", "Prior2InterimDuration"),
+    ("Prior5YearInstant"    , "Prior5YearInstant"),
+    ("Prior5YearDuration"   , "Prior5YearDuration"),
+]
+
+time_names_order = [ x[0] for x in time_names_list ]
+
+time_names = dict(x for x in time_names_list )
 
 def findObj(v, key, val):
     for x in v:
@@ -1010,20 +1014,32 @@ def readXbrlThread(cpu_count, cpu_id, public_docs, progress):
             os.makedirs(json_dir)
 
         json_str_list = sorted(json_str_list, key=lambda x: x[0])
-        time_objs = []
-        cnt = len(json_str_list)
-        for idx, (end_date, num_submission, json_str) in enumerate(json_str_list):
+
+        end_date_objs_dic = {}
+        for end_date, num_submission, json_str in json_str_list:
             objs = json.loads(json_str)
 
             for obj in objs:
-                time_obj = findObj(time_objs, 'time', obj['time'])
-                if time_obj is None:
-                    time_objs.append( joinObj({}, obj, cnt, idx) )
+
+                if obj['time'] in end_date_objs_dic:
+                    end_date_objs_dic[obj['time']].append( (end_date, obj) )
                 else:
-                    joinObj(time_obj, obj, cnt, idx)
+                    end_date_objs_dic[obj['time']] = [ (end_date, obj) ]
+
+        time_end_dates_unions = []
+        for time_name, end_date_objs in end_date_objs_dic.items():
+            union = {}
+            time_end_dates = []
+            for idx, (end_date, obj) in enumerate(end_date_objs):
+                time_end_dates.append(end_date)
+                joinObj(union, obj, len(end_date_objs), idx)
+            
+            time_end_dates_unions.append( (time_name, time_end_dates, union) )
+
+        time_end_dates_unions = sorted(time_end_dates_unions, key=lambda x: time_names_order.index(x[0]))
 
         end_dates = [ x[0] for x in json_str_list ]
-        doc = { 'end_dates': end_dates, 'time_objs': time_objs }
+        doc = { 'end_dates': end_dates, 'time_objs': time_end_dates_unions }
         with codecs.open('%s/%s.json' % (json_dir, edinet_code), 'w','utf-8') as f:
             json.dump(doc, f, ensure_ascii=False)
 

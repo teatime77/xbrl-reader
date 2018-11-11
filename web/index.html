@@ -113,15 +113,16 @@ function makeTable(doc){
         doc_div.removeChild(doc_div.firstChild);
     }
 
-    // { 'end_dates': end_dates, 'time_objs': time_objs }
-    end_dates = doc['end_dates'];
-    for(var time_obj of doc['time_objs']){
+    // doc = { 'end_dates': end_dates, 'time_objs': time_end_dates_unions }
+    for(var time_end_dates_union of doc['time_objs']){
+        [ time_name, end_dates, union ] = time_end_dates_union;
+
         if(true){
 
             doc_div.appendChild( document.createElement('hr') );
 
             h1  = document.createElement('h1');
-            h1.innerHTML = time_names[time_obj['time']];
+            h1.innerHTML = time_names[time_name];
             doc_div.appendChild(h1);
 
             table = document.createElement('table');
@@ -142,10 +143,7 @@ function makeTable(doc){
             // Create an empty <tr> element and add it to the first position of <thead>:
             var row = header.insertRow(-1);
 
-            // Insert a new cell (<td>) at the first position of the "new" <tr> element:
-            var cell = row.insertCell(-1);
-            cell.innerHTML = time_names[time_obj['time']];
-
+            addCell(row, '項目');
             addCell(row, '単位');
 
             for(var end_date of end_dates){
@@ -164,7 +162,7 @@ function makeTable(doc){
                 old_tbody.parentNode.replaceChild(new_tbody, old_tbody)
             }
 
-            tableObj(end_dates, table, time_obj, 0)
+            tableObj(end_dates, table, union, 0)
         }
 
         //'提出日時点'
