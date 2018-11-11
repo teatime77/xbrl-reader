@@ -25,6 +25,21 @@ url2path = {}
 xbrl_idx = 0
 xbrl_basename = None
 
+dmp_cnt = {}
+ctx_cnt = {}
+obj_cnt = {}
+join_cnt = {}
+
+def addCnt(dic, key):
+    if key in dic:
+        dic[key] += 1
+    else:
+        dic[key] = 1
+
+def logCnt(inf, name, dic):
+    for k, v in dic.items():
+        inf.logf.write('%s %s %d\n' % (name, time_names[k], v) )
+
 edinet_json_dic = {}
 
 url2path_lock = threading.Lock()
@@ -91,31 +106,40 @@ def copyLabel(dst, src):
     dst['verbose_label'] = src['verbose_label']
 
 
-def cloneItem(obj, cnt, idx):
+def cloneItem(inf, obj, cnt, idx):
     union = { 'type':obj['type'], 'text': [None] * cnt }
     copyLabel(union, obj)
 
     union['text'][idx] = obj['text']
 
-    union['children'] = [ cloneItem(x, cnt, idx) for x in obj['children'] ]
+    if obj['type'] == "金額" and obj['label'] == '原材料及び貯蔵品':
+        inf.logf.write('clon:%s %s %d %s\n' % (obj['label'], obj['text'], idx, time_names[inf.time_name]))
+        addCnt(join_cnt, inf.time_name)
+
+    union['children'] = [ cloneItem(inf, x, cnt, idx) for x in obj['children'] ]
 
     return union
 
 
-def joinItem(union, obj, cnt, idx):
+def joinItem(inf, union, obj, cnt, idx):
     union['text'][idx] = obj['text']
+
+    if obj['type'] == "金額" and obj['label'] == '原材料及び貯蔵品':
+        inf.logf.write('join:%s %s %d %s\n' % (obj['label'], obj['text'], idx, time_names[inf.time_name]))
+        addCnt(join_cnt, inf.time_name)
+
 
     union_children = union['children']
     for child in obj['children']:
         union_child = findObj(union_children, 'name', child['name'])
         if union_child is None:
-            union_children.append( cloneItem(child, cnt, idx) )
+            union_children.append( cloneItem(inf, child, cnt, idx) )
         else:
-            union_child['text'][idx] = child['text']
+            joinItem(inf, union_child, child, cnt, idx)
 
     return union
 
-def joinAxis(union_axis, axis, cnt, idx):
+def joinAxis(inf, union_axis, axis, cnt, idx):
     assert 'name' in axis and 'name' in union_axis
     assert union_axis['name'] == axis['name']
     assert 'members' in axis and 'members' in union_axis
@@ -126,13 +150,13 @@ def joinAxis(union_axis, axis, cnt, idx):
         if union_member is None:
             union_member = {}
             copyLabel(union_member, member)
-            union_members.append( joinObj(union_member, member, cnt, idx) )
+            union_members.append( joinObj(inf, union_member, member, cnt, idx) )
         else:
-            joinObj(union_member, member, cnt, idx)
+            joinObj(inf, union_member, member, cnt, idx)
 
     return union_axis
 
-def joinObj(union, obj, cnt, idx):
+def joinObj(inf, union, obj, cnt, idx):
     if 'time' in obj:
         if 'time' in union:
             assert union['time'] == obj['time']
@@ -153,7 +177,7 @@ def joinObj(union, obj, cnt, idx):
                 copyLabel(union_axis, axis)
                 union_axes.append( union_axis )
 
-            joinAxis(union_axis, axis, cnt, idx)
+            joinAxis(inf, union_axis, axis, cnt, idx)
 
     if 'values' in obj:
         if 'values' in union:
@@ -161,24 +185,25 @@ def joinObj(union, obj, cnt, idx):
             for value in obj['values']:
                 union_value = findObj(union_values, 'name', value['name'])
                 if union_value is None:
-                    union_values.append( cloneItem(value, cnt, idx) )
+                    union_values.append( cloneItem(inf, value, cnt, idx) )
                 else:
-                    joinItem(union_value, value, cnt, idx)
+                    joinItem(inf, union_value, value, cnt, idx)
 
         else:
-            union['values'] = [ cloneItem(x, cnt, idx) for x in obj['values'] ]
+            union['values'] = [ cloneItem(inf, x, cnt, idx) for x in obj['values'] ]
 
     return union
 
 
 
 class Item:
-    def __init__(self, ele, text):
+    def __init__(self, ctx, ele, text):
+        self.ctx     = ctx
         self.element = ele
         self.text    = text
         self.children = []
 
-    def itemToObj(self, ancestors):
+    def itemToObj(self, inf, ancestors):
         if self in ancestors:
             print(xbrl_basename)
             for x in ancestors + [self]:
@@ -205,7 +230,11 @@ class Item:
         name, label, verbose_label = ele.getLabel()
 
         obj = { 'type': ele.type, 'name':name, 'label':label, 'verbose_label':verbose_label, 'text': text }
-        obj['children'] = [ item2.itemToObj(ancestors) for item2 in self.children ]
+        obj['children'] = [ item2.itemToObj(inf, ancestors) for item2 in self.children ]
+
+        if ele.type == "金額" and label == '原材料及び貯蔵品':
+            inf.logf.write('obj :%s %s %s\n' % (label, text, time_names[self.ctx.time]))
+            addCnt(obj_cnt, self.ctx.time)
 
         ancestors.pop()
         return obj
@@ -232,7 +261,7 @@ class ContextNode:
         self.member_ele = None
         self.values  = []
 
-    def toObj(self):
+    def toObj(self, inf):
         obj = {}
         if self.time is not None:
             obj['time'] = self.time
@@ -248,15 +277,25 @@ class ContextNode:
             axes = []
             obj['axes'] = axes
             for axis in self.axes:
-                dt = { 'members': [ nd.toObj() for nd in axis['members'] ] }
-                copyLabel(dt, axis)
+                dt = { 'members': [ nd.toObj(inf) for nd in axis.members ] }
+
+                dt['name']          = axis.name
+                dt['label']         = axis.label
+                dt['verbose_label'] = axis.verbose_label
+
                 axes.append(dt)
 
-        else:
+        if len(self.values) != 0:
 
-            obj['values'] = [ item.itemToObj([]) for item in self.values ]
+            obj['values'] = [ item.itemToObj(inf, []) for item in self.values ]
 
         return obj
+class Axis:
+    def __init__(self, name, label, verbose_label):
+        self.name = name
+        self.label = label
+        self.verbose_label = verbose_label
+        self.members = []
 
 class Element:
     def __init__(self):
@@ -292,12 +331,13 @@ class Calc:
         self.weight = weight
 
 class Inf:
-    __slots__ = [ 'cpu_count', 'cpu_id', 'cur_dir', 'local_context_dic', 'local_context_nodes', 'local_ns_dic', 'local_xsd_dics', 'local_url2path', 'local_xsd_url2path', 'logf', 'progress' ]
+    __slots__ = [ 'cpu_count', 'cpu_id', 'cur_dir', 'local_context_dic', 'local_top_context_nodes', 'local_ns_dic', 'local_xsd_dics', 'local_url2path', 'local_xsd_url2path', 'logf', 'progress', 'time_name' ]
 
     def __init__(self):
         self.cur_dir = None
         self.local_xsd_url2path = None
         self.local_xsd_dics = None
+        self.time_name = None
 
 def splitUrlLabel(text):
     if text[0] == '{':
@@ -460,27 +500,33 @@ def readContext(inf, el, parent, ctx):
 def setChildren(inf, ctx):
     if len(ctx.axes) != 0:
         for axis in ctx.axes:
-            for nd in axis['members']:
+            for nd in axis.members:
                 setChildren(inf, nd)
 
-    else:
-        assert len(ctx.values) != 0
+    if len(ctx.values) == 0:
+        return
 
-        top_items = list(ctx.values)
-        for item in ctx.values:
+    top_items = list(ctx.values)
+    for item in ctx.values:
 
-            if not item.element.sorted:
-                item.element.sorted = True
-                item.element.calcTo = sorted(item.element.calcTo, key=lambda x: x.order)
-                
-            child_elements = [ x.to for x in item.element.calcTo ]
-            sum_items = [ x for x in ctx.values if x.element in child_elements ]
-            for sum_item in sum_items:
+        if not item.element.sorted:
+            item.element.sorted = True
+            item.element.calcTo = sorted(item.element.calcTo, key=lambda x: x.order)
+            
+        child_elements = [ x.to for x in item.element.calcTo ]
+        sum_items = [ x for x in ctx.values if x.element in child_elements ]
+        for sum_item in sum_items:
+            if sum_item in top_items:
                 item.children.append(sum_item)
-                if sum_item in top_items:
-                    top_items.remove(sum_item)                
+                top_items.remove(sum_item)
 
-        ctx.values = top_items
+        if item.element.type == "金額":
+            name, label, verbose_label = item.element.getLabel()
+            if label == '原材料及び貯蔵品':
+                inf.logf.write('ctx :%s %s %s\n' % (label, item.text, time_names[ctx.time]))
+                addCnt(ctx_cnt, ctx.time)
+
+    ctx.values = top_items
 
 def readCalcArcs(xsd_dic, locs, arcs):
     for el2 in arcs:
@@ -664,36 +710,46 @@ def makeContext(inf, el, id):
         # assert s in time_names
         ctx.time = s
 
-    v = [ x for x in inf.local_context_nodes if x.time == ctx.time ]
+    v = [ x for x in inf.local_top_context_nodes if x.time == ctx.time ]
     if len(v) != 0:
+        assert len(v) == 1
         nd = v[0]
     else:
         nd = ContextNode()
-        nd.time = ctx.time
+        nd.time      = ctx.time
         nd.startDate = ctx.startDate
-        nd.endDate = ctx.endDate
-        nd.instant = ctx.instant
+        nd.endDate   = ctx.endDate
+        nd.instant   = ctx.instant
 
-        inf.local_context_nodes.append(nd)
+        inf.local_top_context_nodes.append(nd)
 
+    leaf_nd = nd
     for axis_ele, member_ele in zip(ctx.axis_eles, ctx.member_eles):
         name, label, verbose_label = axis_ele.getLabel()
-        axis = findObj(nd.axes, 'name', name)      
-        if axis is None:
-            axis = { 'name':name, 'label':label, 'verbose_label':verbose_label, 'members':[] }
+        axis_list = [ x for x in nd.axes if x.name == name ]
+        if len(axis_list) == 0:
+            axis = Axis(name, label, verbose_label)
             nd.axes.append(axis)
 
-        v = [ x for x in axis['members'] if x.member_ele == member_ele ]
-        if len(v) != 0:
-            nd = v[0]
+        else:
+            assert len(axis_list) == 1            
+            axis = axis_list[0]
+
+        member_list = [ x for x in axis.members if x.member_ele == member_ele ]
+        if len(member_list) != 0:
+            assert len(member_list) == 1
+
+            leaf_nd = member_list[0]
         else:
 
-            nd = ContextNode()
+            leaf_nd = ContextNode()
 
-            nd.member_ele = member_ele
-            axis['members'].append(nd)
+            leaf_nd.time      = ctx.time
+            leaf_nd.member_ele = member_ele
+            axis.members.append(leaf_nd)
 
-    inf.local_context_dic[id] = nd
+    assert not id in inf.local_context_dic
+    inf.local_context_dic[id] = leaf_nd
 
 
 def getNameSpace(inf, path):
@@ -799,8 +855,14 @@ def dumpSub(inf, el):
         assert context_ref in inf.local_context_dic
         ctx = inf.local_context_dic[context_ref]
 
-        item = Item(ele, text)
+        item = Item(ctx, ele, text)
         ctx.values.append(item)
+
+        if ele.type == "金額":
+            name, label, verbose_label = ele.getLabel()
+            if label == '原材料及び貯蔵品':
+                inf.logf.write('dmp :%s %s %s\n' % (label, text, time_names[ctx.time]))
+                addCnt(dmp_cnt, ctx.time)
 
     return True
 
@@ -863,6 +925,7 @@ def readXbrl(inf, category_name, public_doc):
 
         xbrl_path = str(p)
         xbrl_basename = os.path.basename(xbrl_path)
+        inf.logf.write('%s ---------------------------------------------------\n' % xbrl_basename)
 
         if xbrl_basename in [ 'jpcrp040300-q3r-001_E27273-000_2015-12-31_01_2016-02-12.xbrl', 'jpcrp030000-asr-001_E00273-000_2015-03-31_01_2015-06-19.xbrl', 'jpcrp030000-asr-001_E00273-000_2014-03-31_01_2014-06-20.xbrl' ]:
             print('循環参照をスキップ', xbrl_basename)
@@ -888,7 +951,7 @@ def readXbrl(inf, category_name, public_doc):
         inf.cur_dir = os.path.dirname(xbrl_path).replace('\\', '/')
 
         inf.local_context_dic = {}
-        inf.local_context_nodes = []
+        inf.local_top_context_nodes = []
 
         inf.local_ns_dic = {}
         inf.local_xsd_dics = {}
@@ -929,12 +992,12 @@ def readXbrl(inf, category_name, public_doc):
         root = tree.getroot()
         dump(inf, root)
 
-        for ctx in inf.local_context_nodes:
+        for ctx in inf.local_top_context_nodes:
             setChildren(inf, ctx)
 
         ctx_objs = []
-        for ctx in inf.local_context_nodes:
-            ctx_objs.append(ctx.toObj())
+        for ctx in inf.local_top_context_nodes:
+            ctx_objs.append(ctx.toObj(inf))
 
         json_str = json.dumps(ctx_objs, ensure_ascii=False)
 
@@ -1006,8 +1069,6 @@ def readXbrlThread(cpu_count, cpu_id, public_docs, progress):
     for category_name, public_doc in public_docs:
         readXbrl(inf, category_name, public_doc)
 
-    inf.logf.close()
-
     for edinet_code, (category_name, json_str_list) in edinet_json_dic.items():
         json_dir = "%s/web/json/%s" % (root_dir, category_name)
         if not os.path.exists(json_dir):
@@ -1028,11 +1089,12 @@ def readXbrlThread(cpu_count, cpu_id, public_docs, progress):
 
         time_end_dates_unions = []
         for time_name, end_date_objs in end_date_objs_dic.items():
+            inf.time_name = time_name
             union = {}
             time_end_dates = []
             for idx, (end_date, obj) in enumerate(end_date_objs):
                 time_end_dates.append(end_date)
-                joinObj(union, obj, len(end_date_objs), idx)
+                joinObj(inf, union, obj, len(end_date_objs), idx)
             
             time_end_dates_unions.append( (time_name, time_end_dates, union) )
 
@@ -1043,6 +1105,16 @@ def readXbrlThread(cpu_count, cpu_id, public_docs, progress):
         with codecs.open('%s/%s.json' % (json_dir, edinet_code), 'w','utf-8') as f:
             json.dump(doc, f, ensure_ascii=False)
 
+    logCnt(inf, 'dmp', dmp_cnt)
+    logCnt(inf, 'ctx', ctx_cnt)
+    logCnt(inf, 'obj', obj_cnt)
+    logCnt(inf, 'join', join_cnt)
+
+    assert len(dmp_cnt) == len(ctx_cnt) and len(dmp_cnt) == len(obj_cnt) and len(dmp_cnt) == len(join_cnt)
+    for k, v in dmp_cnt.items():
+        assert  ctx_cnt[k] == v and obj_cnt[k] == v and join_cnt[k] == v
+
+    inf.logf.close()
     print('CPU:%d 終了:%d' % (cpu_id, int(time.time() - start_time)) )
 
 inf = Inf()
