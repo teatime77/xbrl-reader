@@ -14,6 +14,7 @@ var category_edinet_codes;
 var edinet_codes_select;
 var selectedCategory = null;
 
+var summary = true;
 var show_name = false;
 var show_label = true;
 var show_verbose_label = false;
@@ -21,7 +22,7 @@ var show_verbose_label = false;
 var cur_doc = undefined;
 
 function addCell(row, text, rowspan, colspan){
-    if(text == undefined){
+    if(text == undefined || summary && text == 'null-text'){
         text = '&nbsp;';
     }
     var cell1 = row.insertCell(-1);
@@ -45,10 +46,16 @@ function getLabel(obj){
 function tableItem(end_dates, table, obj, nest){
     tab = '&nbsp;'.repeat(4 * nest);
 
+    prefix = (summary ? '' : 'itm:');
     if(obj['type'] == '文字列' || obj['type'] == 'テキストブロック'){
 
+        if(summary && obj['children'].length == 0 && summary_text_items.indexOf(obj['name']) == -1){
+
+            return;
+        }
+
         var row = table.insertRow(-1);
-        addCell(row, tab + 'itm:' + getLabel(obj), end_dates.length);
+        addCell(row, tab + prefix + getLabel(obj), end_dates.length);
         addCell(row, obj['type'], end_dates.length);
         addCell(row, obj['text'][0], undefined, end_dates.length);
 
@@ -60,7 +67,7 @@ function tableItem(end_dates, table, obj, nest){
     else{
 
         var row = table.insertRow(-1);
-        addCell(row, tab + 'itm:' + getLabel(obj));
+        addCell(row, tab + prefix + getLabel(obj));
         addCell(row, obj['type']);
         for(var x of obj['text']){
             addCell(row, x);
@@ -78,7 +85,8 @@ function tableAxis(end_dates, table, obj, nest){
     tab = '&nbsp;'.repeat(4 * nest);
 
     var row = table.insertRow(-1);
-    addCell(row, tab + 'axis:' + getLabel(obj), undefined, 1 + 1 + end_dates.length);
+    prefix = (summary ? '' : 'axis:');
+    addCell(row, tab + prefix + getLabel(obj), undefined, 1 + 1 + end_dates.length);
 
     for(var obj2 of obj['members']){
         tableObj(end_dates, table, obj2, nest + 1)
@@ -91,7 +99,8 @@ function tableObj(end_dates, table, obj, nest){
     if('name' in obj){
 
         var row = table.insertRow(-1);
-        addCell(row, tab + 'mem:' + getLabel(obj), undefined, 1 + 1 + end_dates.length);
+        prefix = (summary ? '' : 'mem:');
+        addCell(row, tab + prefix + getLabel(obj), undefined, 1 + 1 + end_dates.length);
     }
 
     if('values' in obj && obj['values'].length != 0){
@@ -117,6 +126,9 @@ function makeTable(doc){
     for(var time_end_dates_union of doc['time_objs']){
         [ time_name, end_dates, union ] = time_end_dates_union;
 
+        if(summary && summary_time_names.indexOf(time_name) == -1){
+            continue;
+        }
         if(true){
 
             doc_div.appendChild( document.createElement('hr') );
@@ -164,8 +176,6 @@ function makeTable(doc){
 
             tableObj(end_dates, table, union, 0)
         }
-
-        //'提出日時点'
     }
 }
 
@@ -224,10 +234,22 @@ function on_load(){
     );
 }
 
+function summary_changed(){
+    var idx = document.getElementById('summary').selectedIndex;
+    if(idx == -1){
+        return;
+    }
+    summary = (idx == 0);
+
+    if(cur_doc != undefined){
+
+        makeTable(cur_doc);
+    }
+}
+
 function label_type_changed(){
     var idx = document.getElementById('label_type').selectedIndex;
     if(idx == -1){
-
         return;
     }
     show_name          = (idx == 0);
@@ -312,6 +334,10 @@ var chart = new Chart(canvas, {
 <canvas id="stage"></canvas>
 <ul id="demo"></ul>
 
+<select id='summary' size="3" onchange="summary_changed()">
+    <option selected>要約</option>
+    <option>詳細</option>
+</select>
 <select id='label_type' size="3" onchange="label_type_changed()">
     <option>項目名</option>
     <option selected>ラベル</option>
