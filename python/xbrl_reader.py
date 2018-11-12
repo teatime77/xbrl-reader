@@ -30,13 +30,17 @@ ctx_cnt = {}
 obj_cnt = {}
 join_cnt = {}
 
-def addCnt(dic, key):
+def inc_key_cnt(dic, key):
+    """指定したキーの値を1つカウントアップする。
+    """
     if key in dic:
         dic[key] += 1
     else:
         dic[key] = 1
 
-def logCnt(inf, name, dic):
+def log_dict_cnt(inf, name, dic):
+    """辞書の値をログファイルに書く。
+    """
     for k, v in dic.items():
         inf.logf.write('%s %s %d\n' % (name, time_names[k], v) )
 
@@ -95,51 +99,64 @@ time_names_order = [ x[0] for x in time_names_list ]
 time_names = dict(x for x in time_names_list )
 
 def findObj(v, key, val):
+    """指定したキーの値を返す。
+    """
+
     for x in v:
         if x[key] == val:
             return x
     return None
 
-def copyLabel(dst, src):
+def copy_name_label(dst, src):
+    """nameとlabelをコピーする。
+    """
+
     dst['name']          = src['name']
     dst['label']         = src['label']
     dst['verbose_label'] = src['verbose_label']
 
 
-def cloneItem(inf, obj, cnt, idx):
+def union_item(inf, obj, cnt, idx):
+    """期間別データ(期間ごと値を配列に持つオブジェクト)を作る。
+    """
+
     union = { 'type':obj['type'], 'text': [None] * cnt }
-    copyLabel(union, obj)
+    copy_name_label(union, obj)
 
     union['text'][idx] = obj['text']
 
     if obj['type'] == "金額" and obj['label'] == '原材料及び貯蔵品':
         inf.logf.write('clon:%s %s %d %s\n' % (obj['label'], obj['text'], idx, time_names[inf.time_name]))
-        addCnt(join_cnt, inf.time_name)
+        inc_key_cnt(join_cnt, inf.time_name)
 
-    union['children'] = [ cloneItem(inf, x, cnt, idx) for x in obj['children'] ]
+    union['children'] = [ union_item(inf, x, cnt, idx) for x in obj['children'] ]
 
     return union
 
 
 def joinItem(inf, union, obj, cnt, idx):
+    """期間別データに単一期間のデータをセットする。
+    """
     union['text'][idx] = obj['text']
 
     if obj['type'] == "金額" and obj['label'] == '原材料及び貯蔵品':
         inf.logf.write('join:%s %s %d %s\n' % (obj['label'], obj['text'], idx, time_names[inf.time_name]))
-        addCnt(join_cnt, inf.time_name)
+        inc_key_cnt(join_cnt, inf.time_name)
 
 
     union_children = union['children']
     for child in obj['children']:
         union_child = findObj(union_children, 'name', child['name'])
         if union_child is None:
-            union_children.append( cloneItem(inf, child, cnt, idx) )
+            union_children.append( union_item(inf, child, cnt, idx) )
         else:
             joinItem(inf, union_child, child, cnt, idx)
 
     return union
 
 def joinAxis(inf, union_axis, axis, cnt, idx):
+    """期間別データに軸のデータをセットする。
+    """
     assert 'name' in axis and 'name' in union_axis
     assert union_axis['name'] == axis['name']
     assert 'members' in axis and 'members' in union_axis
@@ -149,7 +166,7 @@ def joinAxis(inf, union_axis, axis, cnt, idx):
         union_member = findObj(union_members, 'name', member['name'])
         if union_member is None:
             union_member = {}
-            copyLabel(union_member, member)
+            copy_name_label(union_member, member)
             union_members.append( joinObj(inf, union_member, member, cnt, idx) )
         else:
             joinObj(inf, union_member, member, cnt, idx)
@@ -157,6 +174,9 @@ def joinAxis(inf, union_axis, axis, cnt, idx):
     return union_axis
 
 def joinObj(inf, union, obj, cnt, idx):
+    """期間別データに軸や項目のデータをセットする。
+    """
+
     if 'time' in obj:
         if 'time' in union:
             assert union['time'] == obj['time']
@@ -174,7 +194,7 @@ def joinObj(inf, union, obj, cnt, idx):
             union_axis = findObj(union_axes, 'name', axis['name'])
             if union_axis is None:
                 union_axis = { 'members':[] }
-                copyLabel(union_axis, axis)
+                copy_name_label(union_axis, axis)
                 union_axes.append( union_axis )
 
             joinAxis(inf, union_axis, axis, cnt, idx)
@@ -185,18 +205,19 @@ def joinObj(inf, union, obj, cnt, idx):
             for value in obj['values']:
                 union_value = findObj(union_values, 'name', value['name'])
                 if union_value is None:
-                    union_values.append( cloneItem(inf, value, cnt, idx) )
+                    union_values.append( union_item(inf, value, cnt, idx) )
                 else:
                     joinItem(inf, union_value, value, cnt, idx)
 
         else:
-            union['values'] = [ cloneItem(inf, x, cnt, idx) for x in obj['values'] ]
+            union['values'] = [ union_item(inf, x, cnt, idx) for x in obj['values'] ]
 
     return union
 
 
-
 class Item:
+    """XBRLインスタンスの中の開示情報の項目 ( 売上高,利益など )
+    """
     def __init__(self, ctx, ele, text):
         self.ctx     = ctx
         self.element = ele
@@ -234,13 +255,15 @@ class Item:
 
         if ele.type == "金額" and label == '原材料及び貯蔵品':
             inf.logf.write('obj :%s %s %s\n' % (label, text, time_names[self.ctx.time]))
-            addCnt(obj_cnt, self.ctx.time)
+            inc_key_cnt(obj_cnt, self.ctx.time)
 
         ancestors.pop()
         return obj
 
 
 class Context:
+    """XBRLのコンテキスト
+    """
     def __init__(self):
         self.time       = None
         self.startDate = None
@@ -252,6 +275,8 @@ class Context:
 
 
 class ContextNode:
+    """XBRLのコンテキストのツリー構造の中のノード
+    """
     def __init__(self):
         self.time       = None
         self.startDate = None
@@ -290,14 +315,21 @@ class ContextNode:
             obj['values'] = [ item.itemToObj(inf, []) for item in self.values ]
 
         return obj
+
+
 class Axis:
+    """ディメンション軸
+    """
     def __init__(self, name, label, verbose_label):
         self.name = name
         self.label = label
         self.verbose_label = verbose_label
         self.members = []
 
+
 class Element:
+    """スキーマファイルの中の項目 ( 語彙スキーマ )
+    """
     def __init__(self):
         self.url  = None
         self.name = None
@@ -524,7 +556,7 @@ def setChildren(inf, ctx):
             name, label, verbose_label = item.element.getLabel()
             if label == '原材料及び貯蔵品':
                 inf.logf.write('ctx :%s %s %s\n' % (label, item.text, time_names[ctx.time]))
-                addCnt(ctx_cnt, ctx.time)
+                inc_key_cnt(ctx_cnt, ctx.time)
 
     ctx.values = top_items
 
@@ -862,7 +894,7 @@ def dumpSub(inf, el):
             name, label, verbose_label = ele.getLabel()
             if label == '原材料及び貯蔵品':
                 inf.logf.write('dmp :%s %s %s\n' % (label, text, time_names[ctx.time]))
-                addCnt(dmp_cnt, ctx.time)
+                inc_key_cnt(dmp_cnt, ctx.time)
 
     return True
 
@@ -1051,7 +1083,11 @@ def make_public_docs_list(cpu_count):
             if not edinet_code in edinet_codes:
                 edinet_codes.append(edinet_code)
 
-    json_path = "%s/web/json/category_edinet_codes.json" % root_dir
+    json_dir = root_dir + "/web/json"
+    if not os.path.exists(json_dir):
+        os.makedirs(json_dir)
+
+    json_path = json_dir + '/category_edinet_codes.json'
     with codecs.open(json_path, 'w','utf-8') as json_f:
         json.dump(category_edinet_codes, json_f, ensure_ascii=False)
 
@@ -1105,10 +1141,10 @@ def readXbrlThread(cpu_count, cpu_id, public_docs, progress):
         with codecs.open('%s/%s.json' % (json_dir, edinet_code), 'w','utf-8') as f:
             json.dump(doc, f, ensure_ascii=False)
 
-    logCnt(inf, 'dmp', dmp_cnt)
-    logCnt(inf, 'ctx', ctx_cnt)
-    logCnt(inf, 'obj', obj_cnt)
-    logCnt(inf, 'join', join_cnt)
+    log_dict_cnt(inf, 'dmp', dmp_cnt)
+    log_dict_cnt(inf, 'ctx', ctx_cnt)
+    log_dict_cnt(inf, 'obj', obj_cnt)
+    log_dict_cnt(inf, 'join', join_cnt)
 
     assert len(dmp_cnt) == len(ctx_cnt) and len(dmp_cnt) == len(obj_cnt) and len(dmp_cnt) == len(join_cnt)
     for k, v in dmp_cnt.items():

@@ -10,7 +10,8 @@ Welcome to xbrl-reader's documentation!
    :maxdepth: 2
    :caption: Contents:
 
-
+   xbrl_reader
+   xbrl_run
 
 Indices and tables
 ==================

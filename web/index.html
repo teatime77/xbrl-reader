@@ -222,8 +222,9 @@ function on_load(){
                 // option要素のvalue属性に値をセット
                 // option.setAttribute('value', category['category_name']);
                 // option要素に値をセット
-                option.innerHTML = category['category_name'];
+                option.innerHTML = category_names[ category['category_name'] ];
                 // 作成したoption要素をselectタグに追加
+                
                 category_select.appendChild(option);
             }
 

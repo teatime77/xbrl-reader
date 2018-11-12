@@ -57,3 +57,15 @@ summary_text_items = [
     "TypeOfCurrentPeriodDEI",
     "IdentificationOfDocumentSubjectToAmendmentDEI",
 ];
+
+category_names = {
+    "brokerage"          :"証券、商品先物取引業",
+    "construction"       :"建設業",
+    "electronics"        :"電気機器",
+    "fishing_agriculture":"水産・農林業",
+    "machinery"          :"機械",
+    "marine_transport"   :"海運業",
+    "mining"             :"鉱業",
+    "petroleum_coal"     :"石油・石炭製品",
+    "pharmaceutical"     :"医薬品",
+};
