@@ -949,7 +949,7 @@ def readCalc(inf):
             readCalcSub(inf, ET.parse(xml_path).getroot(), xsd_dic, locs, arcs)
             readCalcArcs(xsd_dic, locs, arcs)
 
-def readXbrl(inf, category_name, public_doc):
+def readXbrl(inf, category_name, public_doc, xbrl_submissions):
     global xbrl_idx, prev_time, prev_cnt, xbrl_basename
 
     xbrl_list = list( public_doc.glob("*.xbrl") )
@@ -1031,36 +1031,31 @@ def readXbrl(inf, category_name, public_doc):
         for ctx in inf.local_top_context_nodes:
             ctx_objs.append(ctx.toObj(inf))
 
-        json_str = json.dumps(ctx_objs, ensure_ascii=False)
 
         v1 = [ x for x in ctx_objs if x['time'] == 'FilingDateInstant' ] # 提出日時点
         dt1 = v1[0]
-        v2 = [ x for x in dt1['values'] if x['name'] == 'EDINETCodeDEI' ]
-        dt2 = v2[0]
-        edinet_code = dt2['text']
+
         end_date = [ x for x in dt1['values'] if x['name'] == 'CurrentPeriodEndDateDEI' ][0]['text'] # 当会計期間終了日
         num_submission = findObj(dt1['values'], 'name', 'NumberOfSubmissionDEI')['text'] # 提出回数
 
-        if edinet_code in edinet_json_dic:
-            category_name, json_str_list = edinet_json_dic[edinet_code]
+        revisions = [x for x in xbrl_submissions if x[0] == end_date]
+        if any(revisions):
 
-            json_str_list.append( [end_date, num_submission, json_str] )
+            end_date2, num_submission2, ctx_objs2 = revisions[0]
+            if True or num_submission2 < num_submission:
 
-            revisions = [x for x in json_str_list if x[0] == end_date]
-            if 2 <= len(revisions):
-                revisions = sorted(revisions, key=lambda x: x[1])
-                for x in revisions[:-1]:
-                    assert x in json_str_list
-                    # json_str_list.remove(x)
+                # json_str_list.remove(x)
+                xbrl_submissions.append( (end_date, num_submission, ctx_objs) )
 
         else:
-            edinet_json_dic[edinet_code] = (category_name, [[end_date, num_submission, json_str]])
+            xbrl_submissions.append( (end_date, num_submission, ctx_objs) )
+
 
 def make_public_docs_list(cpu_count):
     report_path = root_dir + '/data/EDINET/四半期報告書'
     category_edinet_codes = []
 
-    public_docs_list = [ [] for i in range(cpu_count) ]
+    public_docs_list = [ {} for i in range(cpu_count) ]
     for category_dir in Path(report_path).glob("*"):
         category_name = os.path.basename(str(category_dir))
 
@@ -1078,7 +1073,11 @@ def make_public_docs_list(cpu_count):
             char_sum = sum(ord(x) for x in edinet_code)
             cpu_idx  = char_sum % cpu_count
 
-            public_docs_list[cpu_idx].append( [category_name, public_doc] )
+            dic = public_docs_list[cpu_idx]
+            if edinet_code in dic:
+                dic[edinet_code].append( [category_name, public_doc] )
+            else:
+                dic[edinet_code] = [ [category_name, public_doc] ]
 
             if not edinet_code in edinet_codes:
                 edinet_codes.append(edinet_code)
@@ -1102,21 +1101,22 @@ def readXbrlThread(cpu_count, cpu_id, public_docs, progress):
     inf.progress = progress
     inf.logf =  open('%s/data/log-%d.txt' % (root_dir, cpu_id), 'w', encoding='utf-8')
 
-    for category_name, public_doc in public_docs:
-        readXbrl(inf, category_name, public_doc)
+    for edinet_code in public_docs.keys():
 
-    for edinet_code, (category_name, json_str_list) in edinet_json_dic.items():
+        xbrl_submissions = []
+        for category_name, public_doc in public_docs[edinet_code]:
+            readXbrl(inf, category_name, public_doc, xbrl_submissions)
+
         json_dir = "%s/web/json/%s" % (root_dir, category_name)
         if not os.path.exists(json_dir):
             os.makedirs(json_dir)
 
-        json_str_list = sorted(json_str_list, key=lambda x: x[0])
+        xbrl_submissions = sorted(xbrl_submissions, key=lambda x: x[0])
 
         end_date_objs_dic = {}
-        for end_date, num_submission, json_str in json_str_list:
-            objs = json.loads(json_str)
+        for end_date, num_submission, ctx_objs in xbrl_submissions:
 
-            for obj in objs:
+            for obj in ctx_objs:
 
                 if obj['time'] in end_date_objs_dic:
                     end_date_objs_dic[obj['time']].append( (end_date, obj) )
@@ -1136,7 +1136,7 @@ def readXbrlThread(cpu_count, cpu_id, public_docs, progress):
 
         time_end_dates_unions = sorted(time_end_dates_unions, key=lambda x: time_names_order.index(x[0]))
 
-        end_dates = [ x[0] for x in json_str_list ]
+        end_dates = [ x[0] for x in xbrl_submissions ]
         doc = { 'end_dates': end_dates, 'time_objs': time_end_dates_unions }
         with codecs.open('%s/%s.json' % (json_dir, edinet_code), 'w','utf-8') as f:
             json.dump(doc, f, ensure_ascii=False)
