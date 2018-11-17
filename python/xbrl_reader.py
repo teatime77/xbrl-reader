@@ -228,7 +228,7 @@ class ContextNode(XbrlNode):
         self.startDate = None
         self.endDate = None
         self.instant = None
-        self.axes = []
+        self.dimensions = []
         self.values = []
 
         self.set_schema(schema)
@@ -244,23 +244,23 @@ class ContextNode(XbrlNode):
         if self.schema is not None:
             self.copy_name_label(union)
 
-        if len(self.axes) != 0:
+        if len(self.dimensions) != 0:
 
-            if 'axes' in union:
-                union_axes = union['axes']
+            if 'dimensions' in union:
+                union_dimensions = union['dimensions']
             else:
-                union_axes = []
-                union['axes'] = union_axes
+                union_dimensions = []
+                union['dimensions'] = union_dimensions
 
-            for axis in self.axes:
+            for dimension in self.dimensions:
 
-                union_axis = findObj(union_axes, 'name', axis.name)
-                if union_axis is None:
-                    union_axis = {'members': []}
-                    axis.copy_name_label(union_axis)
-                    union_axes.append(union_axis)
+                union_dimension = findObj(union_dimensions, 'name', dimension.name)
+                if union_dimension is None:
+                    union_dimension = {'members': []}
+                    dimension.copy_name_label(union_dimension)
+                    union_dimensions.append(union_dimension)
 
-                axis.join_axis(inf, union_axis, cnt, idx)
+                dimension.join_dimension(inf, union_dimension, cnt, idx)
 
         if len(self.values) != 0:
 
@@ -279,7 +279,7 @@ class ContextNode(XbrlNode):
         return union
 
 
-class Axis(XbrlNode):
+class Dimension(XbrlNode):
     """ディメンション軸
     """
 
@@ -293,14 +293,14 @@ class Axis(XbrlNode):
 
         self.set_schema(schema)
 
-    def join_axis(self, inf, union_axis, cnt, idx):
+    def join_dimension(self, inf, union_dimension, cnt, idx):
         """期間別データに軸のデータをセットする。
         """
-        assert 'name' in union_axis
-        assert union_axis['name'] == self.name
-        assert 'members' in union_axis
+        assert 'name' in union_dimension
+        assert union_dimension['name'] == self.name
+        assert 'members' in union_dimension
 
-        union_members = union_axis['members']
+        union_members = union_dimension['members']
         for member in self.members:
             union_member = findObj(union_members, 'name', member.name)
             if union_member is None:
@@ -309,8 +309,6 @@ class Axis(XbrlNode):
                 union_members.append(union_member)
 
             member.join_ctx(inf, union_member, cnt, idx)
-
-        return union_axis
 
 
 class SchemaElement:
@@ -524,9 +522,9 @@ def readContext(inf, el, parent, ctx):
 
 
 def setChildren(inf, ctx):
-    if len(ctx.axes) != 0:
-        for axis in ctx.axes:
-            for nd in axis.members:
+    if len(ctx.dimensions) != 0:
+        for dimension in ctx.dimensions:
+            for nd in dimension.members:
                 setChildren(inf, nd)
 
     if len(ctx.values) == 0:
@@ -754,16 +752,16 @@ def makeContext(inf, el, id):
     leaf_nd = nd
     for dimension_schema, member_schema in zip(ctx.dimension_schemas, ctx.member_schemas):
         name, label, verbose_label = dimension_schema.getLabel()
-        axis_list = [x for x in nd.axes if x.name == name]
-        if len(axis_list) == 0:
-            axis = Axis(dimension_schema, name, label, verbose_label)
-            nd.axes.append(axis)
+        dimensions = [x for x in nd.dimensions if x.name == name]
+        if len(dimensions) == 0:
+            dimension = Dimension(dimension_schema, name, label, verbose_label)
+            nd.dimensions.append(dimension)
 
         else:
-            assert len(axis_list) == 1
-            axis = axis_list[0]
+            assert len(dimensions) == 1
+            dimension = dimensions[0]
 
-        member_list = [x for x in axis.members if x.schema == member_schema]
+        member_list = [x for x in dimension.members if x.schema == member_schema]
         if len(member_list) != 0:
             assert len(member_list) == 1
 
@@ -773,7 +771,7 @@ def makeContext(inf, el, id):
             leaf_nd = ContextNode(member_schema)
 
             leaf_nd.time = ctx.time
-            axis.members.append(leaf_nd)
+            dimension.members.append(leaf_nd)
 
     assert not id in inf.local_context_dic
     inf.local_context_dic[id] = leaf_nd

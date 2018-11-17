@@ -81,11 +81,11 @@ function tableItem(end_dates, table, obj, nest){
     }
 }
 
-function tableAxis(end_dates, table, obj, nest){
+function tableDimension(end_dates, table, obj, nest){
     tab = '&nbsp;'.repeat(4 * nest);
 
     var row = table.insertRow(-1);
-    prefix = (summary ? '' : 'axis:');
+    prefix = (summary ? '' : 'dim:');
     addCell(row, tab + prefix + getLabel(obj), undefined, 1 + 1 + end_dates.length);
 
     for(var obj2 of obj['members']){
@@ -109,9 +109,9 @@ function tableObj(end_dates, table, obj, nest){
         }
     }
 
-    if('axes' in obj && obj['axes'].length != 0){
-        for(var axis of obj['axes']){
-            tableAxis(end_dates, table, axis, nest + 1)
+    if('dimensions' in obj && obj['dimensions'].length != 0){
+        for(var dimension of obj['dimensions']){
+            tableDimension(end_dates, table, dimension, nest + 1)
         }
     }
 }
