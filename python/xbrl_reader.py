@@ -773,6 +773,8 @@ def makeContext(inf, el, id):
             leaf_nd.time = ctx.time
             dimension.members.append(leaf_nd)
 
+        nd = leaf_nd
+
     assert not id in inf.local_context_dic
     inf.local_context_dic[id] = leaf_nd
 
@@ -957,12 +959,6 @@ def readXbrl(inf, category_name, public_doc, xbrl_submissions):
         xbrl_path = str(p)
         xbrl_basename = os.path.basename(xbrl_path)
         inf.logf.write('%s ---------------------------------------------------\n' % xbrl_basename)
-
-        if xbrl_basename in ['jpcrp040300-q3r-001_E27273-000_2015-12-31_01_2016-02-12.xbrl',
-                             'jpcrp030000-asr-001_E00273-000_2015-03-31_01_2015-06-19.xbrl',
-                             'jpcrp030000-asr-001_E00273-000_2014-03-31_01_2014-06-20.xbrl']:
-            print('循環参照をスキップ', xbrl_basename)
-            continue
 
         if xbrl_basename.startswith('ifrs-'):
             assert len(xbrl_list) == 2
