@@ -11,10 +11,10 @@ from operator import itemgetter
 from multiprocessing import Array
 
 start_time = time.time()
-prev_time  = start_time
-prev_cnt   = 0
+prev_time = start_time
+prev_cnt = 0
 
-root_dir = os.path.dirname( os.path.abspath(__file__) ).replace('\\', '/') + '/..'
+root_dir = os.path.dirname(os.path.abspath(__file__)).replace('\\', '/') + '/..'
 
 taxonomy_tmpl = root_dir + '/data/EDINET/taxonomy/%s/タクソノミ/taxonomy/'
 
@@ -27,8 +27,8 @@ xbrl_basename = None
 
 dmp_cnt = {}
 ctx_cnt = {}
-obj_cnt = {}
 join_cnt = {}
+
 
 def inc_key_cnt(dic, key):
     """指定したキーの値を1つカウントアップする。
@@ -38,11 +38,13 @@ def inc_key_cnt(dic, key):
     else:
         dic[key] = 1
 
+
 def log_dict_cnt(inf, name, dic):
     """辞書の値をログファイルに書く。
     """
     for k, v in dic.items():
-        inf.logf.write('%s %s %d\n' % (name, time_names[k], v) )
+        inf.logf.write('%s %s %d\n' % (name, time_names[k], v))
+
 
 edinet_json_dic = {}
 
@@ -52,51 +54,52 @@ label_role = "http://www.xbrl.org/2003/role/label"
 verboseLabel_role = "http://www.xbrl.org/2003/role/verboseLabel"
 
 type_dic = {
-    "xbrli:stringItemType" : "文字列",
-    "xbrli:booleanItemType" : "ブール値",
-    "xbrli:dateItemType" : "日付",
-    "xbrli:nonNegativeIntegerItemType" : "非負整数",
-    "nonnum:textBlockItemType" : "テキストブロック",
-    "xbrli:monetaryItemType" : "金額",
-    "num:perShareItemType" : "一株当たり金額",
-    "num:percentItemType" : "割合(%)",
-    "xbrli:decimalItemType" : "小数",
-    "xbrli:sharesItemType" : "株数",
-    "nonnum:domainItemType" : "ドメイン",
-    "xbrli:pureItemType" : "純粋型"
+    "xbrli:stringItemType": "文字列",
+    "xbrli:booleanItemType": "ブール値",
+    "xbrli:dateItemType": "日付",
+    "xbrli:nonNegativeIntegerItemType": "非負整数",
+    "nonnum:textBlockItemType": "テキストブロック",
+    "xbrli:monetaryItemType": "金額",
+    "num:perShareItemType": "一株当たり金額",
+    "num:percentItemType": "割合(%)",
+    "xbrli:decimalItemType": "小数",
+    "xbrli:sharesItemType": "株数",
+    "nonnum:domainItemType": "ドメイン",
+    "xbrli:pureItemType": "純粋型"
 }
 
 time_names_list = [
-    ("FilingDateInstant"    , "提出日時点"),
-    ("CurrentYearInstant"   ,"当期連結時点"),
-    ("CurrentYearDuration"  , "当期連結期間"),
+    ("FilingDateInstant", "提出日時点"),
+    ("CurrentYearInstant", "当期連結時点"),
+    ("CurrentYearDuration", "当期連結期間"),
     ("CurrentQuarterInstant", "当四半期会計期間連結時点"),
     ("CurrentQuarterDuration", "当四半期会計期間連結期間"),
-    ("CurrentYTDDuration"   , "当四半期累計期間連結期間"),
-    ("Prior1YTDDuration"    , "前年度同四半期累計期間連結期間"),
-    ("Prior1QuarterInstant" , "前年度同四半期会計期間連結時点"),
+    ("CurrentYTDDuration", "当四半期累計期間連結期間"),
+    ("Prior1YTDDuration", "前年度同四半期累計期間連結期間"),
+    ("Prior1QuarterInstant", "前年度同四半期会計期間連結時点"),
     ("Prior1QuarterDuration", "前年度同四半期会計期間連結期間"),
-    ("Prior1YearInstant"    , "前期連結時点"),
-    ("Prior1YearDuration"   , "前期連結期間"),
-    ("Prior2YearInstant"    , "前々期連結時点"),
-    ("Prior2YearDuration"   ,"前々期連結期間"),
-    ("Prior3YearInstant"    ,"3期前連結時点"),
-    ("Prior3YearDuration"   ,"3期前連結期間"),
-    ("Prior4YearInstant"    ,"4期前連結時点"),
-    ("Prior4YearDuration"   ,"4期前連結期間"),
-    ("Prior2InterimInstant" , "Prior2InterimInstant"),
-    ("InterimInstant"       , "InterimInstant"),
-    ("InterimDuration"      , "InterimDuration"),
-    ("Prior1InterimInstant" , "Prior1InterimInstant"),
+    ("Prior1YearInstant", "前期連結時点"),
+    ("Prior1YearDuration", "前期連結期間"),
+    ("Prior2YearInstant", "前々期連結時点"),
+    ("Prior2YearDuration", "前々期連結期間"),
+    ("Prior3YearInstant", "3期前連結時点"),
+    ("Prior3YearDuration", "3期前連結期間"),
+    ("Prior4YearInstant", "4期前連結時点"),
+    ("Prior4YearDuration", "4期前連結期間"),
+    ("Prior2InterimInstant", "Prior2InterimInstant"),
+    ("InterimInstant", "InterimInstant"),
+    ("InterimDuration", "InterimDuration"),
+    ("Prior1InterimInstant", "Prior1InterimInstant"),
     ("Prior1InterimDuration", "Prior1InterimDuration"),
     ("Prior2InterimDuration", "Prior2InterimDuration"),
-    ("Prior5YearInstant"    , "Prior5YearInstant"),
-    ("Prior5YearDuration"   , "Prior5YearDuration"),
+    ("Prior5YearInstant", "Prior5YearInstant"),
+    ("Prior5YearDuration", "Prior5YearDuration"),
 ]
 
-time_names_order = [ x[0] for x in time_names_list ]
+time_names_order = [x[0] for x in time_names_list]
 
-time_names = dict(x for x in time_names_list )
+time_names = dict(x for x in time_names_list)
+
 
 def findObj(v, key, val):
     """指定したキーの値を返す。
@@ -107,233 +110,217 @@ def findObj(v, key, val):
             return x
     return None
 
-def copy_name_label(dst, src):
-    """nameとlabelをコピーする。
-    """
 
-    dst['name']          = src['name']
-    dst['label']         = src['label']
-    dst['verbose_label'] = src['verbose_label']
+class XbrlNode:
+    def __init__(self):
+        pass
 
+    def set_schema(self, schema):
+        """nameとlabelをコピーする。
+        """
+        self.schema = schema
 
-def union_item(inf, obj, cnt, idx):
-    """期間別データ(期間ごと値を配列に持つオブジェクト)を作る。
-    """
+        if schema is not None:
+            name, label, verbose_label = self.schema.getLabel()
+            self.name = name
+            self.label = label
+            self.verbose_label = verbose_label
 
-    union = { 'type':obj['type'], 'text': [None] * cnt }
-    copy_name_label(union, obj)
-
-    union['text'][idx] = obj['text']
-
-    if obj['type'] == "金額" and obj['label'] == '原材料及び貯蔵品':
-        inf.logf.write('clon:%s %s %d %s\n' % (obj['label'], obj['text'], idx, time_names[inf.time_name]))
-        inc_key_cnt(join_cnt, inf.time_name)
-
-    union['children'] = [ union_item(inf, x, cnt, idx) for x in obj['children'] ]
-
-    return union
+    def copy_name_label(self, union):
+        union['name'] = self.name
+        union['label'] = self.label
+        union['verbose_label'] = self.verbose_label
 
 
-def joinItem(inf, union, obj, cnt, idx):
-    """期間別データに単一期間のデータをセットする。
-    """
-    union['text'][idx] = obj['text']
-
-    if obj['type'] == "金額" and obj['label'] == '原材料及び貯蔵品':
-        inf.logf.write('join:%s %s %d %s\n' % (obj['label'], obj['text'], idx, time_names[inf.time_name]))
-        inc_key_cnt(join_cnt, inf.time_name)
-
-
-    union_children = union['children']
-    for child in obj['children']:
-        union_child = findObj(union_children, 'name', child['name'])
-        if union_child is None:
-            union_children.append( union_item(inf, child, cnt, idx) )
-        else:
-            joinItem(inf, union_child, child, cnt, idx)
-
-    return union
-
-def joinAxis(inf, union_axis, axis, cnt, idx):
-    """期間別データに軸のデータをセットする。
-    """
-    assert 'name' in axis and 'name' in union_axis
-    assert union_axis['name'] == axis['name']
-    assert 'members' in axis and 'members' in union_axis
-
-    union_members = union_axis['members']
-    for member in axis['members']:
-        union_member = findObj(union_members, 'name', member['name'])
-        if union_member is None:
-            union_member = {}
-            copy_name_label(union_member, member)
-            union_members.append( joinObj(inf, union_member, member, cnt, idx) )
-        else:
-            joinObj(inf, union_member, member, cnt, idx)
-
-    return union_axis
-
-def joinObj(inf, union, obj, cnt, idx):
-    """期間別データに軸や項目のデータをセットする。
-    """
-
-    if 'time' in obj:
-        if 'time' in union:
-            assert union['time'] == obj['time']
-        else:
-            union['time'] = obj['time']
-
-    if 'axes' in obj:
-        if 'axes' in union:
-            union_axes = union['axes']
-        else:
-            union_axes = []
-            union['axes'] = union_axes
-
-        for axis in obj['axes']:
-            union_axis = findObj(union_axes, 'name', axis['name'])
-            if union_axis is None:
-                union_axis = { 'members':[] }
-                copy_name_label(union_axis, axis)
-                union_axes.append( union_axis )
-
-            joinAxis(inf, union_axis, axis, cnt, idx)
-
-    if 'values' in obj:
-        if 'values' in union:
-            union_values = union['values']
-            for value in obj['values']:
-                union_value = findObj(union_values, 'name', value['name'])
-                if union_value is None:
-                    union_values.append( union_item(inf, value, cnt, idx) )
-                else:
-                    joinItem(inf, union_value, value, cnt, idx)
-
-        else:
-            union['values'] = [ union_item(inf, x, cnt, idx) for x in obj['values'] ]
-
-    return union
-
-
-class Item:
+class Item(XbrlNode):
     """XBRLインスタンスの中の開示情報の項目 ( 売上高,利益など )
     """
-    def __init__(self, ctx, ele, text):
-        self.ctx     = ctx
-        self.element = ele
-        self.text    = text
+
+    def __init__(self, ctx, schema, text):
+        super().__init__()
+        self.ctx = ctx
+        self.text = text
         self.children = []
 
-    def itemToObj(self, inf, ancestors):
+        self.set_schema(schema)
+
+        if self.text is None:
+            self.text = 'null-text'
+        else:
+            if self.schema.type == "テキストブロック":
+                self.text = "省略"
+            elif self.schema.type == '文字列':
+                self.text = self.text.replace('\n', ' ')
+
+                if 100 < len(self.text):
+                    self.text = "省略:" + self.text
+
+    def union_item(self, inf, cnt, idx):
+        """期間別データ(期間ごと値を配列に持つオブジェクト)を作る。
+        """
+
+        union = {'type': self.schema.type, 'text': [None] * cnt}
+        self.copy_name_label(union)
+
+        union['text'][idx] = self.text
+
+        if self.schema.type == "金額" and self.label == '原材料及び貯蔵品':
+            inf.logf.write('union:%s %s %d %s\n' % (self.label, self.text, idx, time_names[inf.time_name]))
+            inc_key_cnt(join_cnt, inf.time_name)
+
+        union['children'] = [x.union_item(inf, cnt, idx) for x in self.children]
+
+        return union
+
+    def joinItem(self, inf, ancestors, union, cnt, idx):
         if self in ancestors:
             print(xbrl_basename)
             for x in ancestors + [self]:
-                name, label, verbose_label = x.element.getLabel()
+                name, label, verbose_label = x.schema.getLabel()
                 print(label)
 
         assert not self in ancestors
         ancestors.append(self)
 
-        ele = self.element
-        text = self.text
+        """期間別データに単一期間のデータをセットする。
+        """
+        union['text'][idx] = self.text
 
-        if text is None:
-            text = 'null-text'
-        else:
-            if ele.type == "テキストブロック":
-                text = "省略"
-            elif ele.type == '文字列':
-                text = text.replace('\n', ' ')
+        if self.schema.type == "金額" and self.label == '原材料及び貯蔵品':
+            inf.logf.write('join:%s %s %s\n' % (self.label, self.text, time_names[self.ctx.time]))
+            inc_key_cnt(join_cnt, self.ctx.time)
 
-                if 100 < len(text):
-                    text = "省略:" + text
-
-        name, label, verbose_label = ele.getLabel()
-
-        obj = { 'type': ele.type, 'name':name, 'label':label, 'verbose_label':verbose_label, 'text': text }
-        obj['children'] = [ item2.itemToObj(inf, ancestors) for item2 in self.children ]
-
-        if ele.type == "金額" and label == '原材料及び貯蔵品':
-            inf.logf.write('obj :%s %s %s\n' % (label, text, time_names[self.ctx.time]))
-            inc_key_cnt(obj_cnt, self.ctx.time)
+        union_children = union['children']
+        for child in self.children:
+            union_child = findObj(union_children, 'name', child.name)
+            if union_child is None:
+                union_children.append(child.union_item(inf, cnt, idx))
+            else:
+                child.joinItem(inf, ancestors, union_child, cnt, idx)
 
         ancestors.pop()
-        return obj
+
+        return union
 
 
 class Context:
     """XBRLのコンテキスト
     """
+
     def __init__(self):
-        self.time       = None
+        self.time = None
         self.startDate = None
         self.endDate = None
         self.instant = None
 
-        self.axis_eles  = []
-        self.member_eles = []
+        self.dimension_schemas = []
+        self.member_schemas = []
 
 
-class ContextNode:
+class ContextNode(XbrlNode):
     """XBRLのコンテキストのツリー構造の中のノード
     """
-    def __init__(self):
-        self.time       = None
+
+    def __init__(self, schema):
+        super().__init__()
+
+        self.time = None
         self.startDate = None
         self.endDate = None
         self.instant = None
-        self.axes  = []
-        self.member_ele = None
-        self.values  = []
+        self.axes = []
+        self.values = []
 
-    def toObj(self, inf):
-        obj = {}
+        self.set_schema(schema)
+
+    def join_ctx(self, inf, union, cnt, idx):
         if self.time is not None:
-            obj['time'] = self.time
 
-        if self.member_ele is not None:
+            if 'time' in union:
+                assert union['time'] == self.time
+            else:
+                union['time'] = self.time
 
-            name, label, verbose_label = self.member_ele.getLabel()
-            obj['name']          = name
-            obj['label']         = label
-            obj['verbose_label'] = verbose_label
+        if self.schema is not None:
+            self.copy_name_label(union)
 
         if len(self.axes) != 0:
-            axes = []
-            obj['axes'] = axes
+
+            if 'axes' in union:
+                union_axes = union['axes']
+            else:
+                union_axes = []
+                union['axes'] = union_axes
+
             for axis in self.axes:
-                dt = { 'members': [ nd.toObj(inf) for nd in axis.members ] }
 
-                dt['name']          = axis.name
-                dt['label']         = axis.label
-                dt['verbose_label'] = axis.verbose_label
+                union_axis = findObj(union_axes, 'name', axis.name)
+                if union_axis is None:
+                    union_axis = {'members': []}
+                    axis.copy_name_label(union_axis)
+                    union_axes.append(union_axis)
 
-                axes.append(dt)
+                axis.join_axis(inf, union_axis, cnt, idx)
 
         if len(self.values) != 0:
 
-            obj['values'] = [ item.itemToObj(inf, []) for item in self.values ]
+            if 'values' in union:
+                union_values = union['values']
+                for value in self.values:
+                    union_value = findObj(union_values, 'name', value.name)
+                    if union_value is None:
+                        union_values.append(value.union_item(inf, cnt, idx))
+                    else:
+                        value.joinItem(inf, [], union_value, cnt, idx)
 
-        return obj
+            else:
+                union['values'] = [x.union_item(inf, cnt, idx) for x in self.values]
+
+        return union
 
 
-class Axis:
+class Axis(XbrlNode):
     """ディメンション軸
     """
-    def __init__(self, name, label, verbose_label):
+
+    def __init__(self, schema, name, label, verbose_label):
+        super().__init__()
+
         self.name = name
         self.label = label
         self.verbose_label = verbose_label
         self.members = []
 
+        self.set_schema(schema)
 
-class Element:
+    def join_axis(self, inf, union_axis, cnt, idx):
+        """期間別データに軸のデータをセットする。
+        """
+        assert 'name' in union_axis
+        assert union_axis['name'] == self.name
+        assert 'members' in union_axis
+
+        union_members = union_axis['members']
+        for member in self.members:
+            union_member = findObj(union_members, 'name', member.name)
+            if union_member is None:
+                union_member = {}
+                member.copy_name_label(union_member)
+                union_members.append(union_member)
+
+            member.join_ctx(inf, union_member, cnt, idx)
+
+        return union_axis
+
+
+class SchemaElement:
     """スキーマファイルの中の項目 ( 語彙スキーマ )
     """
+
     def __init__(self):
-        self.url  = None
+        self.url = None
         self.name = None
-        self.id   = None
+        self.id = None
         self.type = None
         self.labels = {}
         self.calcTo = []
@@ -362,8 +349,10 @@ class Calc:
         self.order = order
         self.weight = weight
 
+
 class Inf:
-    __slots__ = [ 'cpu_count', 'cpu_id', 'cur_dir', 'local_context_dic', 'local_top_context_nodes', 'local_ns_dic', 'local_xsd_dics', 'local_url2path', 'local_xsd_url2path', 'logf', 'progress', 'time_name' ]
+    __slots__ = ['cpu_count', 'cpu_id', 'cur_dir', 'local_context_dic', 'local_top_context_nodes', 'local_ns_dic',
+                 'local_xsd_dics', 'local_url2path', 'local_xsd_url2path', 'logf', 'progress', 'time_name']
 
     def __init__(self):
         self.cur_dir = None
@@ -371,15 +360,17 @@ class Inf:
         self.local_xsd_dics = None
         self.time_name = None
 
+
 def splitUrlLabel(text):
     if text[0] == '{':
         i = text.index('}')
         url = text[1:i]
-        label = text[i+1:]
+        label = text[i + 1:]
 
         return url, label
-    
+
     return None, None
+
 
 def getAttribs(el):
     attr = {}
@@ -389,28 +380,29 @@ def getAttribs(el):
 
     return attr
 
-def parseElement(el):
 
+def parseElement(el):
     id = el.get("id")
-    text  = el.text
+    text = el.text
 
     if el.tag[0] == '{':
         i = el.tag.index('}')
         url = el.tag[1:i]
-        label = el.tag[i+1:]
+        label = el.tag[i + 1:]
     else:
         url = None
         label = None
 
     return id, url, label, text
 
+
 def normUrl(url):
     if not url.endswith('.xsd') and url.startswith('http://disclosure.edinet-fsa.go.jp/taxonomy/'):
         v = url.split('/')
 
         name_space = v[4]
-        yymmdd     = v[5]
-        name_cor   = v[6]
+        yymmdd = v[5]
+        name_cor = v[6]
 
         # '/2013-08-31/タクソノミ/taxonomy/jpdei/2013-08-31/jpdei_cor_2013-08-31.xsd'
 
@@ -420,14 +412,15 @@ def normUrl(url):
         return url2
 
     elif url in [
-         'http://xbrl.ifrs.org/taxonomy/2015-03-11/ifrs-full',
-         'http://xbrl.ifrs.org/taxonomy/2014-03-05/ifrs-full',
-         'http://xbrl.ifrs.org/taxonomy/2014-03-05/full_ifrs/full_ifrs-cor_2014-03-05.xsd'
-        ]:
+        'http://xbrl.ifrs.org/taxonomy/2015-03-11/ifrs-full',
+        'http://xbrl.ifrs.org/taxonomy/2014-03-05/ifrs-full',
+        'http://xbrl.ifrs.org/taxonomy/2014-03-05/full_ifrs/full_ifrs-cor_2014-03-05.xsd'
+    ]:
         return 'http://xbrl.ifrs.org/taxonomy/2015-03-11/full_ifrs/full_ifrs-cor_2015-03-11.xsd'
 
     else:
         return url
+
 
 def NoneStr(x):
     if x is None:
@@ -435,22 +428,23 @@ def NoneStr(x):
     else:
         return x
 
-def getTitleNsLabel(inf, text):
 
+def getTitleNsLabel(inf, text):
     v1 = text.split(':')
     assert v1[0] in inf.local_ns_dic
     ns_url = inf.local_ns_dic[v1[0]]
-    label      = v1[1]
+    label = v1[1]
 
     ele = getElement(inf, ns_url, label)
 
     return ele
 
+
 def ReadLabel(el, xsd_dic, loc_dic, resource_dic):
     if el.tag[0] == '{':
         i = el.tag.index('}')
         url = el.tag[1:i]
-        label = el.tag[i+1:]
+        label = el.tag[i + 1:]
 
         if label == "loc":
 
@@ -458,14 +452,14 @@ def ReadLabel(el, xsd_dic, loc_dic, resource_dic):
             assert 'href' in attr and 'label' in attr
             v = attr['href'].split('#')
             assert len(v) == 2
-            loc_dic[ attr['label'] ] = v[1]
+            loc_dic[attr['label']] = v[1]
 
         elif label == "label":
 
             attr = getAttribs(el)
             if 'label' in attr and 'role' in attr:
-                if attr['role'] in [ label_role, verboseLabel_role ]:
-                    resource_dic[ attr['label'] ] = { 'role':attr['role'], 'text': el.text }
+                if attr['role'] in [label_role, verboseLabel_role]:
+                    resource_dic[attr['label']] = {'role': attr['role'], 'text': el.text}
 
             id = el.get("id")
             if id is None:
@@ -479,14 +473,14 @@ def ReadLabel(el, xsd_dic, loc_dic, resource_dic):
                 attr = getAttribs(el)
 
                 if 'from' in attr and 'to' in attr and attr['to'] in resource_dic:
-                    if attr['from'] in loc_dic and loc_dic[ attr['from'] ] in xsd_dic :
-                        ele = xsd_dic[ loc_dic[ attr['from'] ] ]
-                        res = resource_dic[ attr['to'] ]
-                        ele.labels[ res['role'] ] = res['text']
+                    if attr['from'] in loc_dic and loc_dic[attr['from']] in xsd_dic:
+                        ele = xsd_dic[loc_dic[attr['from']]]
+                        res = resource_dic[attr['to']]
+                        ele.labels[res['role']] = res['text']
                     elif attr['from'] in xsd_dic:
-                        ele = xsd_dic[ attr['from'] ]
-                        res = resource_dic[ attr['to'] ]
-                        ele.labels[ res['role'] ] = res['text']
+                        ele = xsd_dic[attr['from']]
+                        res = resource_dic[attr['to']]
+                        ele.labels[res['role']] = res['text']
 
     for child in el:
         ReadLabel(child, xsd_dic, loc_dic, resource_dic)
@@ -514,16 +508,16 @@ def readContext(inf, el, parent, ctx):
         dimension = el.get("dimension")
         dimension_ele = getTitleNsLabel(inf, dimension)
 
-        if not dimension_ele in ctx.axis_eles:
-            ctx.axis_eles.append(dimension_ele)
+        assert not dimension_ele in ctx.dimension_schemas
 
+        ctx.dimension_schemas.append(dimension_ele)
 
-        member_ele = getTitleNsLabel(inf, text)
+        member_schema = getTitleNsLabel(inf, text)
 
-        ctx.member_eles.append(member_ele)
+        ctx.member_schemas.append(member_schema)
 
     else:
-        assert label in [ "context", "entity", "period", "scenario" ]
+        assert label in ["context", "entity", "period", "scenario"]
 
     for child in el:
         readContext(inf, child, label, ctx)
@@ -541,24 +535,25 @@ def setChildren(inf, ctx):
     top_items = list(ctx.values)
     for item in ctx.values:
 
-        if not item.element.sorted:
-            item.element.sorted = True
-            item.element.calcTo = sorted(item.element.calcTo, key=lambda x: x.order)
-            
-        child_elements = [ x.to for x in item.element.calcTo ]
-        sum_items = [ x for x in ctx.values if x.element in child_elements ]
+        if not item.schema.sorted:
+            item.schema.sorted = True
+            item.schema.calcTo = sorted(item.schema.calcTo, key=lambda x: x.order)
+
+        child_elements = [x.to for x in item.schema.calcTo]
+        sum_items = [x for x in ctx.values if x.schema in child_elements]
         for sum_item in sum_items:
             if sum_item in top_items:
                 item.children.append(sum_item)
                 top_items.remove(sum_item)
 
-        if item.element.type == "金額":
-            name, label, verbose_label = item.element.getLabel()
+        if item.schema.type == "金額":
+            name, label, verbose_label = item.schema.getLabel()
             if label == '原材料及び貯蔵品':
                 inf.logf.write('ctx :%s %s %s\n' % (label, item.text, time_names[ctx.time]))
                 inc_key_cnt(ctx_cnt, ctx.time)
 
     ctx.values = top_items
+
 
 def readCalcArcs(xsd_dic, locs, arcs):
     for el2 in arcs:
@@ -570,21 +565,22 @@ def readCalcArcs(xsd_dic, locs, arcs):
             assert order is not None and weight is not None
             order = float(order)
 
-            from_label = attr2['from'] 
-            to_label = attr2['to'] 
+            from_label = attr2['from']
+            to_label = attr2['to']
             assert from_label is not None and to_label is not None
 
-            from_el = locs[from_label] 
+            from_el = locs[from_label]
             if to_label in locs:
-                to_el = locs[to_label] 
+                to_el = locs[to_label]
             else:
                 to_el = xsd_dic[to_label]
             assert from_el is not None and to_el is not None
 
-            if not to_el in [ x.to for x in from_el.calcTo ]:
-                from_el.calcTo.append( Calc(to_el, role, order, weight) )
+            if not to_el in [x.to for x in from_el.calcTo]:
+                from_el.calcTo.append(Calc(to_el, role, order, weight))
 
-#--------------------------------------------------------------------------------------------------------------
+
+# --------------------------------------------------------------------------------------------------------------
 
 def ReadSchema(inf, is_local, xsd_path, el, xsd_dic):
     url, label = splitUrlLabel(el.tag)
@@ -601,14 +597,14 @@ def ReadSchema(inf, is_local, xsd_path, el, xsd_dic):
         attr = getAttribs(el)
     elif label == "element":
 
-        ele = Element()
-        ele.url  = url
+        ele = SchemaElement()
+        ele.url = url
         ele.name = el.get("name")
-        ele.id   = el.get("id")
+        ele.id = el.get("id")
 
         type = el.get("type")
         if type in type_dic:
-            ele.type = type_dic[ type ]
+            ele.type = type_dic[type]
         else:
             ele.type = type
 
@@ -616,19 +612,19 @@ def ReadSchema(inf, is_local, xsd_path, el, xsd_dic):
 
         if ele.id is not None:
             xsd_dic[ele.id] = ele
-                
+
     for child in el:
         ReadSchema(inf, is_local, xsd_path, child, xsd_dic)
 
-def parseNsUrl(inf, ns_url):
 
+def parseNsUrl(inf, ns_url):
     if ns_url.startswith("http://disclosure.edinet-fsa.go.jp/taxonomy/"):
         # http://disclosure.edinet-fsa.go.jp/taxonomy/jpcrp/2017-02-28/jpcrp_cor
 
         v2 = ns_url.split('/')
         name_space = v2[4]
-        yymmdd     = v2[5]
-        name_cor   = v2[6]
+        yymmdd = v2[5]
+        name_cor = v2[6]
 
         # '/2013-08-31/タクソノミ/taxonomy/jpdei/2013-08-31/jpdei_cor_2013-08-31.xsd'
 
@@ -637,7 +633,8 @@ def parseNsUrl(inf, ns_url):
         else:
             file_name = name_cor + "_" + yymmdd + '.xsd'
         xsd_path = (taxonomy_tmpl % yymmdd) + name_space + '/' + yymmdd + '/' + file_name
-        label_path = (taxonomy_tmpl % yymmdd) + name_space + '/' + yymmdd + '/label/' + name_space + "_" + yymmdd + '_lab.xml'
+        label_path = (
+                                 taxonomy_tmpl % yymmdd) + name_space + '/' + yymmdd + '/label/' + name_space + "_" + yymmdd + '_lab.xml'
 
     elif ns_url.startswith("http://disclosure.edinet-fsa.go.jp/"):
         # http://disclosure.edinet-fsa.go.jp/ifrs/q2r/001/E00949-000/2016-09-30/01/2016-11-04
@@ -647,8 +644,8 @@ def parseNsUrl(inf, ns_url):
         v = ns_url[len("http://disclosure.edinet-fsa.go.jp/"):].split('/')
         name = '-'.join(v[:3]) + '_' + '_'.join(v[3:])
 
-        base_path = "%s/%s" % (inf.cur_dir, name )
-        xsd_path   = base_path + '.xsd'
+        base_path = "%s/%s" % (inf.cur_dir, name)
+        xsd_path = base_path + '.xsd'
         label_path = base_path + '_lab.xml'
 
     elif ns_url.startswith("http://xbrl.ifrs.org/taxonomy/"):
@@ -657,16 +654,15 @@ def parseNsUrl(inf, ns_url):
         elif ns_url == 'http://xbrl.ifrs.org/taxonomy/2014-03-05/full_ifrs/full_ifrs-cor_2014-03-05.xsd':
             ns_url = 'http://xbrl.ifrs.org/taxonomy/2014-03-05/ifrs-full'
 
-        if not ns_url in [ 
-            'http://xbrl.ifrs.org/taxonomy/2015-03-11/ifrs-full', 
-            'http://xbrl.ifrs.org/taxonomy/2014-03-05/ifrs-full'            
-            ]:
+        if not ns_url in [
+            'http://xbrl.ifrs.org/taxonomy/2015-03-11/ifrs-full',
+            'http://xbrl.ifrs.org/taxonomy/2014-03-05/ifrs-full'
+        ]:
             print(ns_url)
 
-
-        assert ns_url in [ 
-            'http://xbrl.ifrs.org/taxonomy/2015-03-11/ifrs-full', 
-            'http://xbrl.ifrs.org/taxonomy/2014-03-05/ifrs-full' 
+        assert ns_url in [
+            'http://xbrl.ifrs.org/taxonomy/2015-03-11/ifrs-full',
+            'http://xbrl.ifrs.org/taxonomy/2014-03-05/ifrs-full'
         ]
 
         ifrs_path = root_dir + "/data/IFRS/IFRST_%s/full_ifrs/full_ifrs-cor_%s.xsd"
@@ -692,8 +688,8 @@ def parseNsUrl(inf, ns_url):
         xsd_path = root_dir + "/data/IFRS/xbrl-instance-2003-12-31.xsd"
         label_path = None
 
-    else:        
-        assert ns_url in [ "http://www.xbrl.org/2003/instance", "http://www.xbrl.org/2003/linkbase" ]
+    else:
+        assert ns_url in ["http://www.xbrl.org/2003/instance", "http://www.xbrl.org/2003/linkbase"]
 
         return None, None
 
@@ -705,27 +701,27 @@ def parseNsUrl(inf, ns_url):
                 inf.local_url2path[ns_url] = xsd_path
         else:
             url2path_lock.acquire()
-            
+
             if ns_url in url2path:
                 assert url2path[ns_url] == xsd_path
             else:
                 url2path[ns_url] = xsd_path
-            
+
             url2path_lock.release()
-    
+
     elif inf.local_xsd_url2path is not None and ns_url in inf.local_xsd_url2path:
         assert inf.local_xsd_url2path[ns_url] == xsd_path
 
-
     return xsd_path, label_path
+
 
 def makeContext(inf, el, id):
     ctx = Context()
 
     readContext(inf, el, None, ctx)
-    assert len(ctx.axis_eles) == len(ctx.member_eles)
+    assert len(ctx.dimension_schemas) == len(ctx.member_schemas)
 
-    if len(ctx.axis_eles) == 0:
+    if len(ctx.dimension_schemas) == 0:
 
         if not id in time_names:
             print(id, '-----------------------------------------------------')
@@ -742,42 +738,41 @@ def makeContext(inf, el, id):
         # assert s in time_names
         ctx.time = s
 
-    v = [ x for x in inf.local_top_context_nodes if x.time == ctx.time ]
+    v = [x for x in inf.local_top_context_nodes if x.time == ctx.time]
     if len(v) != 0:
         assert len(v) == 1
         nd = v[0]
     else:
-        nd = ContextNode()
-        nd.time      = ctx.time
+        nd = ContextNode(None)
+        nd.time = ctx.time
         nd.startDate = ctx.startDate
-        nd.endDate   = ctx.endDate
-        nd.instant   = ctx.instant
+        nd.endDate = ctx.endDate
+        nd.instant = ctx.instant
 
         inf.local_top_context_nodes.append(nd)
 
     leaf_nd = nd
-    for axis_ele, member_ele in zip(ctx.axis_eles, ctx.member_eles):
-        name, label, verbose_label = axis_ele.getLabel()
-        axis_list = [ x for x in nd.axes if x.name == name ]
+    for dimension_schema, member_schema in zip(ctx.dimension_schemas, ctx.member_schemas):
+        name, label, verbose_label = dimension_schema.getLabel()
+        axis_list = [x for x in nd.axes if x.name == name]
         if len(axis_list) == 0:
-            axis = Axis(name, label, verbose_label)
+            axis = Axis(dimension_schema, name, label, verbose_label)
             nd.axes.append(axis)
 
         else:
-            assert len(axis_list) == 1            
+            assert len(axis_list) == 1
             axis = axis_list[0]
 
-        member_list = [ x for x in axis.members if x.member_ele == member_ele ]
+        member_list = [x for x in axis.members if x.schema == member_schema]
         if len(member_list) != 0:
             assert len(member_list) == 1
 
             leaf_nd = member_list[0]
         else:
 
-            leaf_nd = ContextNode()
+            leaf_nd = ContextNode(member_schema)
 
-            leaf_nd.time      = ctx.time
-            leaf_nd.member_ele = member_ele
+            leaf_nd.time = ctx.time
             axis.members.append(leaf_nd)
 
     assert not id in inf.local_context_dic
@@ -802,10 +797,11 @@ def getNameSpace(inf, path):
                 k3 = line.find('"', k2 + 2)
                 url = line[k2 + 2:k3]
 
-                inf.local_ns_dic[name] = url                
-                
+                inf.local_ns_dic[name] = url
+
             break
     f.close()
+
 
 def GetSchemaLabelDic(inf, url):
     url = normUrl(url)
@@ -848,10 +844,10 @@ def GetSchemaLabelDic(inf, url):
                 loc_dic = {}
                 ReadLabel(label_root, xsd_dic, loc_dic, resource_dic)
 
-                label_dics[label_path]  = 1
-
+                label_dics[label_path] = 1
 
     return xsd_dic
+
 
 def getElement(inf, url, label):
     xsd_dic = GetSchemaLabelDic(inf, url)
@@ -861,17 +857,16 @@ def getElement(inf, url, label):
 
     return ele
 
-def dumpSub(inf, el):
 
+def dumpSub(inf, el):
     id, url, label, text = parseElement(el)
 
     if url == "http://www.xbrl.org/2003/instance" and label == "context":
-
         makeContext(inf, el, id)
         return False
 
     # if url in [ "http://www.xbrl.org/2003/instance", "http://www.xbrl.org/2003/linkbase" ]:
-    if url in [ "http://www.xbrl.org/2003/linkbase" ]:
+    if url in ["http://www.xbrl.org/2003/linkbase"]:
         pass
     else:
 
@@ -898,12 +893,16 @@ def dumpSub(inf, el):
 
     return True
 
-def dump(inf, el):
+
+def make_tree(inf, el):
+    c = el.__class__
+    s = el.__class__.__name__
     go_down = dumpSub(inf, el)
 
     if go_down:
         for child in el:
-            dump(inf, child)
+            make_tree(inf, child)
+
 
 def readCalcSub(inf, el, xsd_dic, locs, arcs):
     url, label = splitUrlLabel(el.tag)
@@ -912,8 +911,8 @@ def readCalcSub(inf, el, xsd_dic, locs, arcs):
         attr = getAttribs(el)
         for el2 in el:
             url2, label2 = splitUrlLabel(el2.tag)
-            if label2 in [ 'loc', 'calculationArc' ]: 
-                if label2 == 'loc': 
+            if label2 in ['loc', 'calculationArc']:
+                if label2 == 'loc':
                     attr2 = getAttribs(el2)
                     v = attr2['href'].split('#')
                     if v[0].startswith('http://'):
@@ -922,7 +921,7 @@ def readCalcSub(inf, el, xsd_dic, locs, arcs):
                     else:
                         xsd_dic2 = xsd_dic
                     assert v[1] in xsd_dic2
-                    locs[ attr2['label'] ] = xsd_dic2[ v[1] ]
+                    locs[attr2['label']] = xsd_dic2[v[1]]
 
                 elif label2 == 'calculationArc':
                     arcs.append(el2)
@@ -931,10 +930,11 @@ def readCalcSub(inf, el, xsd_dic, locs, arcs):
         for child in el:
             readCalcSub(inf, child, xsd_dic, locs, arcs)
 
+
 def readCalc(inf):
     name_space = 'jppfs'
     name_cor = 'jppfs_cor'
-    for yymmdd in [ '2018-02-28' ]:
+    for yymmdd in ['2018-02-28']:
         xsd_base = (taxonomy_tmpl % yymmdd) + name_space + '/' + yymmdd
         xsd_path = xsd_base + '/' + name_cor + "_" + yymmdd + '.xsd'
 
@@ -949,17 +949,20 @@ def readCalc(inf):
             readCalcSub(inf, ET.parse(xml_path).getroot(), xsd_dic, locs, arcs)
             readCalcArcs(xsd_dic, locs, arcs)
 
+
 def readXbrl(inf, category_name, public_doc, xbrl_submissions):
     global xbrl_idx, prev_time, prev_cnt, xbrl_basename
 
-    xbrl_list = list( public_doc.glob("*.xbrl") )
+    xbrl_list = list(public_doc.glob("*.xbrl"))
     for p in xbrl_list:
 
         xbrl_path = str(p)
         xbrl_basename = os.path.basename(xbrl_path)
         inf.logf.write('%s ---------------------------------------------------\n' % xbrl_basename)
 
-        if xbrl_basename in [ 'jpcrp040300-q3r-001_E27273-000_2015-12-31_01_2016-02-12.xbrl', 'jpcrp030000-asr-001_E00273-000_2015-03-31_01_2015-06-19.xbrl', 'jpcrp030000-asr-001_E00273-000_2014-03-31_01_2014-06-20.xbrl' ]:
+        if xbrl_basename in ['jpcrp040300-q3r-001_E27273-000_2015-12-31_01_2016-02-12.xbrl',
+                             'jpcrp030000-asr-001_E00273-000_2015-03-31_01_2015-06-19.xbrl',
+                             'jpcrp030000-asr-001_E00273-000_2014-03-31_01_2014-06-20.xbrl']:
             print('循環参照をスキップ', xbrl_basename)
             continue
 
@@ -973,9 +976,8 @@ def readXbrl(inf, category_name, public_doc, xbrl_submissions):
         xbrl_idx += 1
         inf.progress[inf.cpu_id] = xbrl_idx
         if xbrl_idx % 100 == 0:
-
             cnt = sum(inf.progress)
-            lap = "%d" % int(1000 * (time.time() - prev_time) / (cnt - prev_cnt) )
+            lap = "%d" % int(1000 * (time.time() - prev_time) / (cnt - prev_cnt))
             prev_time = time.time()
             prev_cnt = cnt
             print(inf.cpu_id, lap, cnt, category_name)
@@ -1002,7 +1004,6 @@ def readXbrl(inf, category_name, public_doc, xbrl_submissions):
 
             local_label_path = local_xsd_path[:len(local_xsd_path) - 4] + "_lab.xml"
             if os.path.exists(local_label_path):
-
                 resource_dic = {}
                 loc_dic = {}
                 ReadLabel(ET.parse(str(local_label_path)).getroot(), local_xsd_dic, loc_dic, resource_dic)
@@ -1015,52 +1016,47 @@ def readXbrl(inf, category_name, public_doc, xbrl_submissions):
                 readCalcSub(inf, ET.parse(local_cal_path).getroot(), local_xsd_dic, locs, arcs)
                 readCalcArcs(local_xsd_dic, locs, arcs)
 
-        local_label_path_list = list( Path(inf.cur_dir).glob("*_lab.xml") )
+        local_label_path_list = list(Path(inf.cur_dir).glob("*_lab.xml"))
         assert len(local_label_path_list) == label_cnt
 
         getNameSpace(inf, xbrl_path)
 
         tree = ET.parse(xbrl_path)
         root = tree.getroot()
-        dump(inf, root)
+        make_tree(inf, root)
 
         for ctx in inf.local_top_context_nodes:
             setChildren(inf, ctx)
 
-        ctx_objs = []
-        for ctx in inf.local_top_context_nodes:
-            ctx_objs.append(ctx.toObj(inf))
+        ctx_objs = list(inf.local_top_context_nodes)
 
+        dt1 = next(x for x in ctx_objs if x.time == 'FilingDateInstant')  # 提出日時点
 
-        v1 = [ x for x in ctx_objs if x['time'] == 'FilingDateInstant' ] # 提出日時点
-        dt1 = v1[0]
-
-        end_date = [ x for x in dt1['values'] if x['name'] == 'CurrentPeriodEndDateDEI' ][0]['text'] # 当会計期間終了日
-        num_submission = findObj(dt1['values'], 'name', 'NumberOfSubmissionDEI')['text'] # 提出回数
+        end_date = [x for x in dt1.values if x.name == 'CurrentPeriodEndDateDEI'][0].text  # 当会計期間終了日
+        num_submission = next(x for x in dt1.values if x.name == 'NumberOfSubmissionDEI').text  # 提出回数
 
         revisions = [x for x in xbrl_submissions if x[0] == end_date]
         if any(revisions):
 
             end_date2, num_submission2, ctx_objs2 = revisions[0]
             if True or num_submission2 < num_submission:
-
                 # json_str_list.remove(x)
-                xbrl_submissions.append( (end_date, num_submission, ctx_objs) )
+                xbrl_submissions.append((end_date, num_submission, ctx_objs))
 
         else:
-            xbrl_submissions.append( (end_date, num_submission, ctx_objs) )
+            xbrl_submissions.append((end_date, num_submission, ctx_objs))
 
 
 def make_public_docs_list(cpu_count):
     report_path = root_dir + '/data/EDINET/四半期報告書'
     category_edinet_codes = []
 
-    public_docs_list = [ {} for i in range(cpu_count) ]
+    public_docs_list = [{} for i in range(cpu_count)]
     for category_dir in Path(report_path).glob("*"):
         category_name = os.path.basename(str(category_dir))
 
         edinet_codes = []
-        category_edinet_codes.append( { 'category_name': category_name, 'edinet_codes': edinet_codes}   )
+        category_edinet_codes.append({'category_name': category_name, 'edinet_codes': edinet_codes})
 
         for public_doc in category_dir.glob("*/*/XBRL/PublicDoc"):
             xbrl_path_list = list(public_doc.glob('jpcrp*.xbrl'))
@@ -1071,13 +1067,13 @@ def make_public_docs_list(cpu_count):
             items = re.split('[-_]', xbrl_path_0_basename)
             edinet_code = items[3]
             char_sum = sum(ord(x) for x in edinet_code)
-            cpu_idx  = char_sum % cpu_count
+            cpu_idx = char_sum % cpu_count
 
             dic = public_docs_list[cpu_idx]
             if edinet_code in dic:
-                dic[edinet_code].append( [category_name, public_doc] )
+                dic[edinet_code].append([category_name, public_doc])
             else:
-                dic[edinet_code] = [ [category_name, public_doc] ]
+                dic[edinet_code] = [[category_name, public_doc]]
 
             if not edinet_code in edinet_codes:
                 edinet_codes.append(edinet_code)
@@ -1087,7 +1083,7 @@ def make_public_docs_list(cpu_count):
         os.makedirs(json_dir)
 
     json_path = json_dir + '/category_edinet_codes.json'
-    with codecs.open(json_path, 'w','utf-8') as json_f:
+    with codecs.open(json_path, 'w', 'utf-8') as json_f:
         json.dump(category_edinet_codes, json_f, ensure_ascii=False)
 
     return category_edinet_codes, public_docs_list
@@ -1095,13 +1091,16 @@ def make_public_docs_list(cpu_count):
 
 def readXbrlThread(cpu_count, cpu_id, public_docs, progress):
     inf = Inf()
-    
+
     inf.cpu_count = cpu_count
     inf.cpu_id = cpu_id
     inf.progress = progress
-    inf.logf =  open('%s/data/log-%d.txt' % (root_dir, cpu_id), 'w', encoding='utf-8')
+    inf.logf = open('%s/data/log-%d.txt' % (root_dir, cpu_id), 'w', encoding='utf-8')
 
     for edinet_code in public_docs.keys():
+        dmp_cnt.clear()
+        ctx_cnt.clear()
+        join_cnt.clear()
 
         xbrl_submissions = []
         for category_name, public_doc in public_docs[edinet_code]:
@@ -1118,10 +1117,10 @@ def readXbrlThread(cpu_count, cpu_id, public_docs, progress):
 
             for obj in ctx_objs:
 
-                if obj['time'] in end_date_objs_dic:
-                    end_date_objs_dic[obj['time']].append( (end_date, obj) )
+                if obj.time in end_date_objs_dic:
+                    end_date_objs_dic[obj.time].append((end_date, obj))
                 else:
-                    end_date_objs_dic[obj['time']] = [ (end_date, obj) ]
+                    end_date_objs_dic[obj.time] = [(end_date, obj)]
 
         time_end_dates_unions = []
         for time_name, end_date_objs in end_date_objs_dic.items():
@@ -1130,28 +1129,28 @@ def readXbrlThread(cpu_count, cpu_id, public_docs, progress):
             time_end_dates = []
             for idx, (end_date, obj) in enumerate(end_date_objs):
                 time_end_dates.append(end_date)
-                joinObj(inf, union, obj, len(end_date_objs), idx)
-            
-            time_end_dates_unions.append( (time_name, time_end_dates, union) )
+                obj.join_ctx(inf, union, len(end_date_objs), idx)
+
+            time_end_dates_unions.append((time_name, time_end_dates, union))
 
         time_end_dates_unions = sorted(time_end_dates_unions, key=lambda x: time_names_order.index(x[0]))
 
-        end_dates = [ x[0] for x in xbrl_submissions ]
-        doc = { 'end_dates': end_dates, 'time_objs': time_end_dates_unions }
-        with codecs.open('%s/%s.json' % (json_dir, edinet_code), 'w','utf-8') as f:
+        end_dates = [x[0] for x in xbrl_submissions]
+        doc = {'end_dates': end_dates, 'time_objs': time_end_dates_unions}
+        with codecs.open('%s/%s.json' % (json_dir, edinet_code), 'w', 'utf-8') as f:
             json.dump(doc, f, ensure_ascii=False)
 
-    log_dict_cnt(inf, 'dmp', dmp_cnt)
-    log_dict_cnt(inf, 'ctx', ctx_cnt)
-    log_dict_cnt(inf, 'obj', obj_cnt)
-    log_dict_cnt(inf, 'join', join_cnt)
+        log_dict_cnt(inf, 'dmp ', dmp_cnt)
+        log_dict_cnt(inf, 'ctx ', ctx_cnt)
+        log_dict_cnt(inf, 'join', join_cnt)
 
-    assert len(dmp_cnt) == len(ctx_cnt) and len(dmp_cnt) == len(obj_cnt) and len(dmp_cnt) == len(join_cnt)
-    for k, v in dmp_cnt.items():
-        assert  ctx_cnt[k] == v and obj_cnt[k] == v and join_cnt[k] == v
+        assert len(dmp_cnt) == len(ctx_cnt) and len(dmp_cnt) == len(join_cnt)
+        for k, v in dmp_cnt.items():
+            assert ctx_cnt[k] == v and join_cnt[k] == v
 
     inf.logf.close()
-    print('CPU:%d 終了:%d' % (cpu_id, int(time.time() - start_time)) )
+    print('CPU:%d 終了:%d' % (cpu_id, int(time.time() - start_time)))
+
 
 inf = Inf()
 readCalc(inf)
@@ -1159,7 +1158,6 @@ readCalc(inf)
 GetSchemaLabelDic(inf, "http://www.xbrl.org/2003/instance")
 
 if __name__ == '__main__':
-
     cpu_count = 1
     cpu_id = 0
 
