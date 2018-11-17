@@ -8,7 +8,7 @@
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.7.3/Chart.min.js"></script>
 <script type="text/javascript" src="js/util.js"></script>
 
-<script>
+<script type="text/javascript">
 var category_select;
 var category_edinet_codes;
 var edinet_codes_select;
@@ -70,7 +70,15 @@ function tableItem(end_dates, table, obj, nest){
         addCell(row, tab + prefix + getLabel(obj));
         addCell(row, obj['type']);
         for(var x of obj['text']){
-            addCell(row, x);
+            var txt = x;
+            if(obj['type'] == '金額'){
+                try{
+                    var n = parseInt(x);
+                    txt = '' + Math.round(n / 1000);
+                }
+                catch(e){}
+            }
+            addCell(row, txt);
         }
     }
 
@@ -116,7 +124,62 @@ function tableObj(end_dates, table, obj, nest){
     }
 }
 
+var sub_win = undefined;
+
+function makeReport(){
+    if(sub_win == undefined){
+
+        return;
+    }
+
+    var doc = cur_doc;
+    var report_sel = sub_win.document.getElementById('report-sel');
+    while (report_sel.firstChild) {
+        report_sel.removeChild(report_sel.firstChild);
+    }
+
+    var cnt = 0;
+    for(var idx = 0; idx < doc['end_dates'].length; idx++){
+        end_date = doc['end_dates'][idx];
+        htm_path = doc['htm_paths'][idx];
+
+        var grp = sub_win.document.createElement('optgroup');
+        grp.label= end_date;
+        report_sel.appendChild(grp);
+        cnt++;
+
+        // optgroup 
+        for(var htm of htm_path){
+            var k = htm.lastIndexOf('/');
+            var fname = htm.substr(k + 1, 14);
+
+            var option = sub_win.document.createElement('option');
+            option.innerHTML = fname;
+            option.value = htm;
+            if(cnt == 1){
+                option.selected = true;
+            }
+            
+            grp.appendChild(option);
+            cnt++;
+        }
+    }
+
+    report_sel.size = cnt;
+
+    sub_win.report_changed();
+}
+
+
+function open_report(){
+    if(sub_win == undefined){
+
+        sub_win = window.open('report.html', 'xbrl-report');
+    }
+}
+
 function makeTable(doc){
+
     var doc_div = document.getElementById('doc-div');
     while (doc_div.firstChild) {
         doc_div.removeChild(doc_div.firstChild);
@@ -191,6 +254,7 @@ function readXbrl(category_name, edinet_code){
 
             cur_doc = doc;
             makeTable(cur_doc);
+            makeReport();
         },
         function() { //jsonの読み込みに失敗した時
             console.log('失敗');
@@ -347,7 +411,10 @@ var chart = new Chart(canvas, {
 
 <select id='category' size="10" onchange="category_changed()"></select>
 <select id='edinet_codes' size="10" onchange="edinet_codes_changed()"></select>
+<input type="button" value="報告書表示" onclick="open_report()" />
+<br/>
+<div id='doc-div' ></div>
 
-<div id='doc-div'></div>
+
 </body>
 </html>

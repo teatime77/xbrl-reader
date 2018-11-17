@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta charset="utf-8" />
+<title>四半期報告書</title>
+<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.10.1/jquery.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.7.3/Chart.min.js"></script>
+<script type="text/javascript" src="js/util.js"></script>
+<script type="text/javascript">
+
+function report_changed(){
+    var report_sel = document.getElementById('report-sel');
+    if(report_sel.selectedOptions.length != 1){
+        return;
+    }
+    var opt = report_sel.selectedOptions[0];
+
+    var frm = document.getElementById('report-frame');
+    frm.src = opt.value;
+}
+
+</script>
+</head>
+</head>
+<body>
+<table>
+    <tr>
+        <td width='10%' style="vertical-align:top">
+            <select id='report-sel' onchange="report_changed()" style='vertical-align:top'></select>
+        </td>
+        <td width='90%' style="vertical-align:top">
+            <iframe src="https://www.yahoo.co.jp/" id="report-frame"  style="width: 1000px; height: 2000px;"></iframe>
+        </td>
+    </tr>
+</table>
+            
+</body>

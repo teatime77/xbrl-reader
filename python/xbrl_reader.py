@@ -14,7 +14,8 @@ start_time = time.time()
 prev_time = start_time
 prev_cnt = 0
 
-root_dir = os.path.dirname(os.path.abspath(__file__)).replace('\\', '/') + '/..'
+root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__))).replace('\\', '/')
+report_path = root_dir + '/web/report'
 
 taxonomy_tmpl = root_dir + '/data/EDINET/taxonomy/%s/タクソノミ/taxonomy/'
 
@@ -28,7 +29,6 @@ xbrl_basename = None
 dmp_cnt = {}
 ctx_cnt = {}
 join_cnt = {}
-
 
 def inc_key_cnt(dic, key):
     """指定したキーの値を1つカウントアップする。
@@ -1028,21 +1028,24 @@ def readXbrl(inf, category_name, public_doc, xbrl_submissions):
 
         end_date = [x for x in dt1.values if x.name == 'CurrentPeriodEndDateDEI'][0].text  # 当会計期間終了日
         num_submission = next(x for x in dt1.values if x.name == 'NumberOfSubmissionDEI').text  # 提出回数
+        document_type = next(x for x in dt1.values if x.name == 'DocumentTypeDEI').text  # 様式
+
+        web_path_len = len(root_dir + '/web/')
+        htm_path = [ str(x).replace('\\', '/')[web_path_len:] for x in Path(inf.cur_dir).glob("*.htm") ]
 
         revisions = [x for x in xbrl_submissions if x[0] == end_date]
         if any(revisions):
 
-            end_date2, num_submission2, ctx_objs2 = revisions[0]
+            end_date2, num_submission2, ctx_objs2, htm_path2 = revisions[0]
             if True or num_submission2 < num_submission:
                 # json_str_list.remove(x)
-                xbrl_submissions.append((end_date, num_submission, ctx_objs))
+                xbrl_submissions.append((end_date, num_submission, ctx_objs, htm_path))
 
         else:
-            xbrl_submissions.append((end_date, num_submission, ctx_objs))
+            xbrl_submissions.append((end_date, num_submission, ctx_objs, htm_path))
 
 
 def make_public_docs_list(cpu_count):
-    report_path = root_dir + '/data/EDINET/四半期報告書'
     category_edinet_codes = []
 
     public_docs_list = [{} for i in range(cpu_count)]
@@ -1107,7 +1110,7 @@ def readXbrlThread(cpu_count, cpu_id, public_docs, progress):
         xbrl_submissions = sorted(xbrl_submissions, key=lambda x: x[0])
 
         end_date_objs_dic = {}
-        for end_date, num_submission, ctx_objs in xbrl_submissions:
+        for end_date, num_submission, ctx_objs, htm_path in xbrl_submissions:
 
             for obj in ctx_objs:
 
@@ -1130,7 +1133,10 @@ def readXbrlThread(cpu_count, cpu_id, public_docs, progress):
         time_end_dates_unions = sorted(time_end_dates_unions, key=lambda x: time_names_order.index(x[0]))
 
         end_dates = [x[0] for x in xbrl_submissions]
-        doc = {'end_dates': end_dates, 'time_objs': time_end_dates_unions}
+
+        htm_paths = [x[3] for x in xbrl_submissions]
+
+        doc = {'end_dates': end_dates, 'time_objs': time_end_dates_unions, 'htm_paths': htm_paths}
         with codecs.open('%s/%s.json' % (json_dir, edinet_code), 'w', 'utf-8') as f:
             json.dump(doc, f, ensure_ascii=False)
 
