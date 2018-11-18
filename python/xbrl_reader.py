@@ -7,30 +7,31 @@ import json
 import codecs
 import threading
 import time
+from typing import Dict, List, Any
 from operator import itemgetter
 from multiprocessing import Array
 
+def find(x):
+    try:
+        return next(x)
+    except StopIteration:
+        return None
+    
 start_time = time.time()
 prev_time = start_time
-prev_cnt = 0
+prev_cnt: int = 0
 
 root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__))).replace('\\', '/')
 report_path = root_dir + '/web/report'
 
 taxonomy_tmpl = root_dir + '/data/EDINET/taxonomy/%s/タクソノミ/taxonomy/'
 
-xsd_dics = {}
-label_dics = {}
 
-url2path = {}
 xbrl_idx = 0
 xbrl_basename = None
 
-dmp_cnt = {}
-ctx_cnt = {}
-join_cnt = {}
 
-def inc_key_cnt(dic, key):
+def inc_key_cnt(dic: dict, key):
     """指定したキーの値を1つカウントアップする。
     """
     if key in dic:
@@ -39,16 +40,12 @@ def inc_key_cnt(dic, key):
         dic[key] = 1
 
 
-def log_dict_cnt(inf, name, dic):
+def log_dict_cnt(inf, name, dic: dict):
     """辞書の値をログファイルに書く。
     """
     for k, v in dic.items():
         inf.logf.write('%s %s %d\n' % (name, time_names[k], v))
 
-
-edinet_json_dic = {}
-
-url2path_lock = threading.Lock()
 
 label_role = "http://www.xbrl.org/2003/role/label"
 verboseLabel_role = "http://www.xbrl.org/2003/role/verboseLabel"
@@ -101,7 +98,7 @@ time_names_order = [x[0] for x in time_names_list]
 time_names = dict(x for x in time_names_list)
 
 
-def findObj(v, key, val):
+def findObj(v: dict, key, val):
     """指定したキーの値を返す。
     """
 
@@ -111,97 +108,33 @@ def findObj(v, key, val):
     return None
 
 
-class XbrlNode:
-    def __init__(self):
-        pass
-
-    def set_schema(self, schema):
-        """nameとlabelをコピーする。
-        """
-        self.schema = schema
-
-        if schema is not None:
-            name, label, verbose_label = self.schema.getLabel()
-            self.name = name
-            self.label = label
-            self.verbose_label = verbose_label
-
-    def copy_name_label(self, union):
-        union['name'] = self.name
-        union['label'] = self.label
-        union['verbose_label'] = self.verbose_label
-
-
-class Item(XbrlNode):
-    """XBRLインスタンスの中の開示情報の項目 ( 売上高,利益など )
+class SchemaElement:
+    """スキーマファイルの中の項目 ( 語彙スキーマ )
     """
 
-    def __init__(self, ctx, schema, text):
-        super().__init__()
-        self.ctx = ctx
-        self.text = text
-        self.children = []
+    def __init__(self):
+        self.url = None
+        self.name = None
+        self.id = None
+        self.type = None
+        self.labels = {}
+        self.calcTo = []
+        self.sorted = False
 
-        self.set_schema(schema)
+    def getLabel(self):
+        verbose_label = None
+        label = None
 
-        if self.text is None:
-            self.text = 'null-text'
-        else:
-            if self.schema.type == "テキストブロック":
-                self.text = "省略"
-            elif self.schema.type == '文字列':
-                self.text = self.text.replace('\n', ' ')
+        if verboseLabel_role in self.labels:
+            verbose_label = self.labels[verboseLabel_role]
 
-                if 100 < len(self.text):
-                    self.text = "省略:" + self.text
+        if label_role in self.labels:
+            label = self.labels[label_role]
 
-    def union_item(self, inf, cnt, idx):
-        """期間別データ(期間ごと値を配列に持つオブジェクト)を作る。
-        """
+        if verbose_label is None and label is None:
+            assert self.url in ['http://www.xbrl.org/2003/instance', 'http://www.w3.org/2001/XMLSchema']
 
-        union = {'type': self.schema.type, 'text': [None] * cnt}
-        self.copy_name_label(union)
-
-        union['text'][idx] = self.text
-
-        if self.schema.type == "金額" and self.label == '原材料及び貯蔵品':
-            inf.logf.write('union:%s %s %d %s\n' % (self.label, self.text, idx, time_names[inf.time_name]))
-            inc_key_cnt(join_cnt, inf.time_name)
-
-        union['children'] = [x.union_item(inf, cnt, idx) for x in self.children]
-
-        return union
-
-    def joinItem(self, inf, ancestors, union, cnt, idx):
-        if self in ancestors:
-            print(xbrl_basename)
-            for x in ancestors + [self]:
-                name, label, verbose_label = x.schema.getLabel()
-                print(label)
-
-        assert not self in ancestors
-        ancestors.append(self)
-
-        """期間別データに単一期間のデータをセットする。
-        """
-        union['text'][idx] = self.text
-
-        if self.schema.type == "金額" and self.label == '原材料及び貯蔵品':
-            inf.logf.write('join:%s %s %s\n' % (self.label, self.text, time_names[self.ctx.time]))
-            inc_key_cnt(join_cnt, self.ctx.time)
-
-        union_children = union['children']
-        for child in self.children:
-            union_child = findObj(union_children, 'name', child.name)
-            if union_child is None:
-                union_children.append(child.union_item(inf, cnt, idx))
-            else:
-                child.joinItem(inf, ancestors, union_child, cnt, idx)
-
-        ancestors.pop()
-
-        return union
-
+        return self.name, label, verbose_label
 
 class Context:
     """XBRLのコンテキスト
@@ -215,6 +148,29 @@ class Context:
 
         self.dimension_schemas = []
         self.member_schemas = []
+
+class XbrlNode:
+    def __init__(self):
+        pass
+
+    def set_schema(self, schema):
+        """schemaをセットする。
+        schemaがNoneでなければ、schemaのnameとlabelを得る。
+        """
+        self.schema = schema
+
+        if schema is not None:
+            name, label, verbose_label = self.schema.getLabel()
+            self.name = name
+            self.label = label
+            self.verbose_label = verbose_label
+
+    def copy_name_label(self, union):
+        """nameとlabelをコピーする。
+        """
+        union['name'] = self.name
+        union['label'] = self.label
+        union['verbose_label'] = self.verbose_label
 
 
 class ContextNode(XbrlNode):
@@ -234,6 +190,8 @@ class ContextNode(XbrlNode):
         self.set_schema(schema)
 
     def join_ctx(self, inf, union, cnt, idx):
+        """期間別データに単一期間のノードをセットする。
+        """
         if self.time is not None:
 
             if 'time' in union:
@@ -276,7 +234,73 @@ class ContextNode(XbrlNode):
             else:
                 union['values'] = [x.union_item(inf, cnt, idx) for x in self.values]
 
+class Item(XbrlNode):
+    """XBRLインスタンスの中の開示情報の項目 ( 売上高,利益など )
+    """
+
+    def __init__(self, ctx: ContextNode, schema: SchemaElement, text: str):
+        super().__init__()
+        self.ctx = ctx
+        self.text = text
+        self.children = []
+
+        self.set_schema(schema)
+
+        if self.text is None:
+            self.text = 'null-text'
+        else:
+            if self.schema.type == "テキストブロック":
+                self.text = "省略"
+            elif self.schema.type == '文字列':
+                self.text = self.text.replace('\n', ' ')
+
+                if 100 < len(self.text):
+                    self.text = "省略:" + self.text
+
+    def union_item(self, inf, cnt, idx):
+        """期間別データ(期間ごと値を配列に持つオブジェクト)を作る。
+        """
+
+        union = {
+            'type': self.schema.type, 
+            'text': [None] * cnt
+        }
+
+        self.copy_name_label(union)
+
+        union['text'][idx] = self.text
+
+        if self.schema.type == "金額" and self.label == '原材料及び貯蔵品':
+            inf.logf.write('union:%s %s %d %s\n' % (self.label, self.text, idx, time_names[inf.time_name]))
+            inc_key_cnt(join_cnt, inf.time_name)
+
+        union['children'] = [ x.union_item(inf, cnt, idx) for x in self.children ]
+
         return union
+
+    def joinItem(self, inf, ancestors, union, cnt, idx):
+        """期間別データに単一期間のデータをセットする。
+        """
+        assert not self in ancestors
+        ancestors.append(self)
+
+        union['text'][idx] = self.text
+
+        if self.schema.type == "金額" and self.label == '原材料及び貯蔵品':
+            inf.logf.write('join:%s %s %s\n' % (self.label, self.text, time_names[self.ctx.time]))
+            inc_key_cnt(join_cnt, self.ctx.time)
+
+        union_children = union['children']
+        for child in self.children:
+            union_child = findObj(union_children, 'name', child.name)
+            if union_child is None:
+                union_children.append(child.union_item(inf, cnt, idx))
+            else:
+                child.joinItem(inf, ancestors, union_child, cnt, idx)
+
+        ancestors.pop()
+
+
 
 
 class Dimension(XbrlNode):
@@ -293,7 +317,7 @@ class Dimension(XbrlNode):
 
         self.set_schema(schema)
 
-    def join_dimension(self, inf, union_dimension, cnt, idx):
+    def join_dimension(self, inf, union_dimension: dict, cnt: int, idx: int):
         """期間別データに軸のデータをセットする。
         """
         assert 'name' in union_dimension
@@ -311,36 +335,10 @@ class Dimension(XbrlNode):
             member.join_ctx(inf, union_member, cnt, idx)
 
 
-class SchemaElement:
-    """スキーマファイルの中の項目 ( 語彙スキーマ )
-    """
-
-    def __init__(self):
-        self.url = None
-        self.name = None
-        self.id = None
-        self.type = None
-        self.labels = {}
-        self.calcTo = []
-        self.sorted = False
-
-    def getLabel(self):
-        verbose_label = None
-        label = None
-
-        if verboseLabel_role in self.labels:
-            verbose_label = self.labels[verboseLabel_role]
-
-        if label_role in self.labels:
-            label = self.labels[label_role]
-
-        if verbose_label is None and label is None:
-            assert self.url in ['http://www.xbrl.org/2003/instance', 'http://www.w3.org/2001/XMLSchema']
-
-        return self.name, label, verbose_label
-
 
 class Calc:
+    """計算スキーマ
+    """
     def __init__(self, to_el, role, order, weight):
         self.to = to_el
         self.role = role
@@ -358,8 +356,18 @@ class Inf:
         self.local_xsd_dics = None
         self.time_name = None
 
+xsd_dics    : Dict[str, SchemaElement] = {}
+label_dics  : Dict[str, bool] = {}
+
+dmp_cnt     : Dict[str, int] = {}
+ctx_cnt     : Dict[str, int] = {}
+join_cnt    : Dict[str, int] = {}
+
 
 def splitUrlLabel(text):
+    """テキストをURL部分とラベル部分に分割する。
+    例 : {http://www.w3.org/1999/xlink}href
+    """
     if text[0] == '{':
         i = text.index('}')
         url = text[1:i]
@@ -370,8 +378,12 @@ def splitUrlLabel(text):
     return None, None
 
 
-def getAttribs(el):
+def getAttribs(el : ET.Element):
+    """属性のラベルと値の辞書を作って返す。
+    """
+    # 属性のラベルと値の辞書
     attr = {}
+
     for k, v in el.attrib.items():
         attr_url, attr_label = splitUrlLabel(k)
         attr[attr_label] = v
@@ -379,7 +391,7 @@ def getAttribs(el):
     return attr
 
 
-def parseElement(el):
+def parseElement(el : ET.Element):
     id = el.get("id")
     text = el.text
 
@@ -390,6 +402,9 @@ def parseElement(el):
     else:
         url = None
         label = None
+
+    url1, label1 = splitUrlLabel(el.tag)
+    assert url1 == url and label1 == label
 
     return id, url, label, text
 
@@ -420,12 +435,6 @@ def normUrl(url):
         return url
 
 
-def NoneStr(x):
-    if x is None:
-        return ""
-    else:
-        return x
-
 
 def getTitleNsLabel(inf, text):
     v1 = text.split(':')
@@ -444,10 +453,15 @@ def ReadLabel(el, xsd_dic, loc_dic, resource_dic):
         url = el.tag[1:i]
         label = el.tag[i + 1:]
 
+        url1, label1 = splitUrlLabel(el.tag)
+        assert url1 == url and label1 == label
+
         if label == "loc":
 
             attr = getAttribs(el)
             assert 'href' in attr and 'label' in attr
+            # href  = jpcrp040300-q1r-001_E04251-000_2016-06-30_01_2016-08-12.xsd#jpcrp040300-q1r_E04251-000_ProvisionForLossOnCancellationOfContractEL
+            # label = ProvisionForLossOnCancellationOfContractEL
             v = attr['href'].split('#')
             assert len(v) == 2
             loc_dic[attr['label']] = v[1]
@@ -484,24 +498,26 @@ def ReadLabel(el, xsd_dic, loc_dic, resource_dic):
         ReadLabel(child, xsd_dic, loc_dic, resource_dic)
 
 
-def readContext(inf, el, parent, ctx):
+def readContext(inf, el : ET.Element, parent_label, ctx : Context):
+    """コンテキストの情報を得る。
+    """
     id, url, label, text = parseElement(el)
 
     if label == "identifier":
-        assert parent == "entity"
+        assert parent_label == "entity"
 
     elif label == "startDate":
-        assert parent == "period"
+        assert parent_label == "period"
         ctx.startDate = text
     elif label == "endDate":
-        assert parent == "period"
+        assert parent_label == "period"
         ctx.endDate = text
     elif label == "instant":
-        assert parent == "period"
+        assert parent_label == "period"
         ctx.instant = text
 
     elif label == "explicitMember":
-        assert parent == "scenario"
+        assert parent_label == "scenario"
 
         dimension = el.get("dimension")
         dimension_ele = getTitleNsLabel(inf, dimension)
@@ -521,7 +537,7 @@ def readContext(inf, el, parent, ctx):
         readContext(inf, child, label, ctx)
 
 
-def setChildren(inf, ctx):
+def setChildren(inf, ctx: ContextNode):
     if len(ctx.dimensions) != 0:
         for dimension in ctx.dimensions:
             for nd in dimension.members:
@@ -580,7 +596,7 @@ def readCalcArcs(xsd_dic, locs, arcs):
 
 # --------------------------------------------------------------------------------------------------------------
 
-def ReadSchema(inf, is_local, xsd_path, el, xsd_dic):
+def ReadSchema(inf, is_local, xsd_path, el: ET.Element, xsd_dic):
     url, label = splitUrlLabel(el.tag)
 
     if label == 'schema':
@@ -592,24 +608,23 @@ def ReadSchema(inf, is_local, xsd_path, el, xsd_dic):
         else:
             xsd_dics[target_ns] = xsd_dic
 
-        attr = getAttribs(el)
     elif label == "element":
 
-        ele = SchemaElement()
-        ele.url = url
-        ele.name = el.get("name")
-        ele.id = el.get("id")
+        schema      = SchemaElement()
+        schema.url  = url
+        schema.name = el.get("name")
+        schema.id   = el.get("id")
 
         type = el.get("type")
         if type in type_dic:
-            ele.type = type_dic[type]
+            schema.type = type_dic[type]
         else:
-            ele.type = type
+            schema.type = type
 
-        xsd_dic[ele.name] = ele
+        xsd_dic[schema.name] = schema
 
-        if ele.id is not None:
-            xsd_dic[ele.id] = ele
+        if schema.id is not None:
+            xsd_dic[schema.id] = schema
 
     for child in el:
         ReadSchema(inf, is_local, xsd_path, child, xsd_dic)
@@ -697,15 +712,6 @@ def parseNsUrl(inf, ns_url):
                 assert inf.local_url2path[ns_url] == xsd_path
             else:
                 inf.local_url2path[ns_url] = xsd_path
-        else:
-            url2path_lock.acquire()
-
-            if ns_url in url2path:
-                assert url2path[ns_url] == xsd_path
-            else:
-                url2path[ns_url] = xsd_path
-
-            url2path_lock.release()
 
     elif inf.local_xsd_url2path is not None and ns_url in inf.local_xsd_url2path:
         assert inf.local_xsd_url2path[ns_url] == xsd_path
@@ -737,10 +743,13 @@ def makeContext(inf, el, id):
         ctx.time = s
 
     v = [x for x in inf.local_top_context_nodes if x.time == ctx.time]
+    nd2 = find( x for x in inf.local_top_context_nodes if x.time == ctx.time )
     if len(v) != 0:
         assert len(v) == 1
         nd = v[0]
+        assert nd2 == nd
     else:
+        assert nd2 is None
         nd = ContextNode(None)
         nd.time = ctx.time
         nd.startDate = ctx.startDate
@@ -844,7 +853,7 @@ def GetSchemaLabelDic(inf, url):
                 loc_dic = {}
                 ReadLabel(label_root, xsd_dic, loc_dic, resource_dic)
 
-                label_dics[label_path] = 1
+                label_dics[label_path] = True
 
     return xsd_dic
 
@@ -858,7 +867,7 @@ def getElement(inf, url, label):
     return ele
 
 
-def dumpSub(inf, el):
+def dumpSub(inf, el: ET.Element):
     id, url, label, text = parseElement(el)
 
     if url == "http://www.xbrl.org/2003/instance" and label == "context":

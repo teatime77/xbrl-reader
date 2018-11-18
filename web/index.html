@@ -74,7 +74,9 @@ function tableItem(end_dates, table, obj, nest){
             if(obj['type'] == '金額'){
                 try{
                     var n = parseInt(x);
-                    txt = '' + Math.round(n / 1000);
+                    if(! isNaN(n)){
+                        txt = '' + Math.round(n / 1000);
+                    }
                 }
                 catch(e){}
             }
