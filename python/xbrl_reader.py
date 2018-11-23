@@ -1,42 +1,3 @@
-"""
-.. uml::
-
-    [*] --> make_public_docs_list
-    make_public_docs_list --> readXbrlThread
-    readXbrlThread -> readXbrl
-    readXbrl -> ReadSchema
-    ReadSchema -> SchemaElement
-    ReadSchema -> ReadSchema
-    ReadSchema --> ReadLabel
-    ReadLabel -> getAttribs
-    ReadLabel -> ReadLabel
-    ReadLabel --> readCalcSub
-    readCalcSub --> readCalcArcs
-    readCalcArcs --> getNameSpace
-    getNameSpace --> make_tree
-    make_tree --> setChildren
-    readXbrlThread --> json.dump
-    json.dump --> [*]
-
-
-.. uml::
-
-    [*] --> make_tree
-    make_tree -> dumpSub
-    dumpSub -> makeContext
-    makeContext --> Context
-    Context --> readContext
-    state readContext {
-        [*] --> parseElement
-        parseElement --> getTitleNsLabel
-    }
-    readContext --> ContextNode
-    ContextNode --> Dimension
-    dumpSub -> parseElement
-    dumpSub -> getSchemaElement
-    getSchemaElement --> Item
-
-"""
 
 import sys
 import os
@@ -52,15 +13,11 @@ from operator import itemgetter
 from multiprocessing import Array
 
 
-def find(x):
-    """
-    .. uml::
-
-        アリス -> ボブ: こんにちは
-        アリス <- ボブ: How are you?
+def find(search_iteration):
+    """リスト内で条件に合う要素を返す。
     """
     try:
-        return next(x)
+        return next(search_iteration)
     except StopIteration:
         return None
 
@@ -151,24 +108,22 @@ class SchemaElement:
         self.name = None
         self.id = None
         self.type = None
-        self.labels = {}
+        self.label = None
+        self.verbose_label = None
         self.calcTo = []
         self.sorted = False
 
+    def setLabel(self, role, text):
+        if role == label_role:
+            self.label = text
+        elif role == verboseLabel_role:
+            self.verbose_label = text
+
     def getLabel(self):
-        verbose_label = None
-        label = None
-
-        if verboseLabel_role in self.labels:
-            verbose_label = self.labels[verboseLabel_role]
-
-        if label_role in self.labels:
-            label = self.labels[label_role]
-
-        if verbose_label is None and label is None:
+        if self.verbose_label is None and self.label is None:
             assert self.url in ['http://www.xbrl.org/2003/instance', 'http://www.w3.org/2001/XMLSchema']
 
-        return self.name, label, verbose_label
+        return self.name, self.label, self.verbose_label
 
 
 class Context:
@@ -540,11 +495,11 @@ def ReadLabel(el, xsd_dic, loc_dic, resource_dic):
                     if attr['from'] in loc_dic and loc_dic[attr['from']] in xsd_dic:
                         ele = xsd_dic[loc_dic[attr['from']]]
                         res = resource_dic[attr['to']]
-                        ele.labels[res['role']] = res['text']
+                        ele.setLabel(res['role'], res['text'])
                     elif attr['from'] in xsd_dic:
                         ele = xsd_dic[attr['from']]
                         res = resource_dic[attr['to']]
-                        ele.labels[res['role']] = res['text']
+                        ele.setLabel(res['role'], res['text'])
 
     for child in el:
         ReadLabel(child, xsd_dic, loc_dic, resource_dic)
@@ -779,9 +734,7 @@ def makeContext(inf, el, id):
 
     if len(ctx.dimension_schemas) == 0:
 
-        if not id in time_names:
-            print(id, '-----------------------------------------------------')
-        # assert id in time_names
+        assert id in time_names
         ctx.time = id
 
     else:
@@ -789,19 +742,11 @@ def makeContext(inf, el, id):
         k = id.find('_')
         assert k != -1
         s = id[:k]
-        if not s in time_names:
-            print(s, '-----------------------------------------------------')
-        # assert s in time_names
+        assert s in time_names
         ctx.time = s
 
-    v = [x for x in inf.local_top_context_nodes if x.time == ctx.time]
-    nd2 = find(x for x in inf.local_top_context_nodes if x.time == ctx.time)
-    if len(v) != 0:
-        assert len(v) == 1
-        nd = v[0]
-        assert nd2 == nd
-    else:
-        assert nd2 is None
+    nd = find(x for x in inf.local_top_context_nodes if x.time == ctx.time)
+    if nd is None:
         nd = ContextNode(None)
         nd.time = ctx.time
         nd.startDate = ctx.startDate
@@ -879,7 +824,8 @@ def GetSchemaLabelDic(inf, url) -> Dict[str, SchemaElement]:
             if url in xsd_dics:
                 xsd_dic = xsd_dics[url]
 
-            elif os.path.exists(xsd_path):
+            else:
+                assert os.path.exists(xsd_path)
                 xsd_dic : Dict[str, SchemaElement] = {}
 
                 xsd_tree = ET.parse(xsd_path)
@@ -896,7 +842,8 @@ def GetSchemaLabelDic(inf, url) -> Dict[str, SchemaElement]:
             if label_path in label_dics:
                 pass
 
-            elif os.path.exists(label_path):
+            else:
+                assert os.path.exists(label_path)
 
                 label_tree = ET.parse(label_path)
                 label_root = label_tree.getroot()
@@ -1011,7 +958,7 @@ def readCalc(inf):
             readCalcArcs(xsd_dic, locs, arcs)
 
 
-def readXbrl(inf, public_doc, xbrl_submissions):
+def readXbrl(inf, category_name, public_doc, xbrl_submissions):
     global xbrl_idx, prev_time, prev_cnt, xbrl_basename
 
     xbrl_list = list(public_doc.glob("*.xbrl"))
@@ -1035,7 +982,7 @@ def readXbrl(inf, public_doc, xbrl_submissions):
             lap = "%d" % int(1000 * (time.time() - prev_time) / (cnt - prev_cnt))
             prev_time = time.time()
             prev_cnt = cnt
-            print(inf.cpu_id, lap, cnt)
+            print(inf.cpu_id, lap, cnt, category_name)
 
         inf.cur_dir = os.path.dirname(xbrl_path).replace('\\', '/')
 
@@ -1153,13 +1100,8 @@ def make_public_docs_list(cpu_count):
 
 
 def readXbrlThread(cpu_count, cpu_id, category_name_dic, progress):
+    """スレッドのメイン処理
     """
-    .. uml::
-
-        readXbrl -> join_ctx
-        join_ctx -> json.dump
-    """
-
 
     inf = Inf()
 
@@ -1181,7 +1123,7 @@ def readXbrlThread(cpu_count, cpu_id, category_name_dic, progress):
 
             xbrl_submissions = []
             for public_doc in public_docs:
-                readXbrl(inf, public_doc, xbrl_submissions)
+                readXbrl(inf, category_name, public_doc, xbrl_submissions)
 
             xbrl_submissions = sorted(xbrl_submissions, key=lambda x: x[0])
 
