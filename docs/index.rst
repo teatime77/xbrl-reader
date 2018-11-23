@@ -13,6 +13,11 @@ Welcome to xbrl-reader's documentation!
    xbrl_reader
    xbrl_run
 
+.. uml::
+
+   Alice -> Bob: Hi!
+   Alice <- Bob: How are you?
+
 Indices and tables
 ==================
 

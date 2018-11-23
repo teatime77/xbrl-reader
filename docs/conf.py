@@ -44,7 +44,8 @@ extensions = [
     'sphinx.ext.viewcode',
     
     'sphinx.ext.graphviz',
-    'sphinxcontrib.blockdiag'
+    'sphinxcontrib.blockdiag',
+    'sphinxcontrib.plantuml'
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -187,3 +188,4 @@ epub_exclude_files = ['search.html']
 # -- Extension configuration -------------------------------------------------
 
 blockdiag_html_image_format = 'SVG'
+plantuml = 'java -jar C:\\usr\\java\\plantuml.jar'

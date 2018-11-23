@@ -1,3 +1,43 @@
+"""
+.. uml::
+
+    [*] --> make_public_docs_list
+    make_public_docs_list --> readXbrlThread
+    readXbrlThread -> readXbrl
+    readXbrl -> ReadSchema
+    ReadSchema -> SchemaElement
+    ReadSchema -> ReadSchema
+    ReadSchema --> ReadLabel
+    ReadLabel -> getAttribs
+    ReadLabel -> ReadLabel
+    ReadLabel --> readCalcSub
+    readCalcSub --> readCalcArcs
+    readCalcArcs --> getNameSpace
+    getNameSpace --> make_tree
+    make_tree --> setChildren
+    readXbrlThread --> json.dump
+    json.dump --> [*]
+
+
+.. uml::
+
+    [*] --> make_tree
+    make_tree -> dumpSub
+    dumpSub -> makeContext
+    makeContext --> Context
+    Context --> readContext
+    state readContext {
+        [*] --> parseElement
+        parseElement --> getTitleNsLabel
+    }
+    readContext --> ContextNode
+    ContextNode --> Dimension
+    dumpSub -> parseElement
+    dumpSub -> getSchemaElement
+    getSchemaElement --> Item
+
+"""
+
 import sys
 import os
 import xml.etree.ElementTree as ET
@@ -11,24 +51,18 @@ from typing import Dict, List, Any
 from operator import itemgetter
 from multiprocessing import Array
 
+
 def find(x):
+    """
+    .. uml::
+
+        アリス -> ボブ: こんにちは
+        アリス <- ボブ: How are you?
+    """
     try:
         return next(x)
     except StopIteration:
         return None
-    
-start_time = time.time()
-prev_time = start_time
-prev_cnt: int = 0
-
-root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__))).replace('\\', '/')
-report_path = root_dir + '/web/report'
-
-taxonomy_tmpl = root_dir + '/data/EDINET/taxonomy/%s/タクソノミ/taxonomy/'
-
-
-xbrl_idx = 0
-xbrl_basename = None
 
 
 def inc_key_cnt(dic: dict, key):
@@ -136,6 +170,7 @@ class SchemaElement:
 
         return self.name, label, verbose_label
 
+
 class Context:
     """XBRLのコンテキスト
     """
@@ -148,6 +183,7 @@ class Context:
 
         self.dimension_schemas = []
         self.member_schemas = []
+
 
 class XbrlNode:
     def __init__(self):
@@ -234,6 +270,7 @@ class ContextNode(XbrlNode):
             else:
                 union['values'] = [x.union_item(inf, cnt, idx) for x in self.values]
 
+
 class Item(XbrlNode):
     """XBRLインスタンスの中の開示情報の項目 ( 売上高,利益など )
     """
@@ -262,7 +299,7 @@ class Item(XbrlNode):
         """
 
         union = {
-            'type': self.schema.type, 
+            'type': self.schema.type,
             'text': [None] * cnt
         }
 
@@ -274,7 +311,7 @@ class Item(XbrlNode):
             inf.logf.write('union:%s %s %d %s\n' % (self.label, self.text, idx, time_names[inf.time_name]))
             inc_key_cnt(join_cnt, inf.time_name)
 
-        union['children'] = [ x.union_item(inf, cnt, idx) for x in self.children ]
+        union['children'] = [x.union_item(inf, cnt, idx) for x in self.children]
 
         return union
 
@@ -299,8 +336,6 @@ class Item(XbrlNode):
                 child.joinItem(inf, ancestors, union_child, cnt, idx)
 
         ancestors.pop()
-
-
 
 
 class Dimension(XbrlNode):
@@ -335,10 +370,10 @@ class Dimension(XbrlNode):
             member.join_ctx(inf, union_member, cnt, idx)
 
 
-
 class Calc:
     """計算スキーマ
     """
+
     def __init__(self, to_el, role, order, weight):
         self.to = to_el
         self.role = role
@@ -356,12 +391,25 @@ class Inf:
         self.local_xsd_dics = None
         self.time_name = None
 
-xsd_dics    : Dict[str, SchemaElement] = {}
-label_dics  : Dict[str, bool] = {}
+start_time = time.time()
+prev_time = start_time
+prev_cnt: int = 0
 
-dmp_cnt     : Dict[str, int] = {}
-ctx_cnt     : Dict[str, int] = {}
-join_cnt    : Dict[str, int] = {}
+root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__))).replace('\\', '/')
+report_path = root_dir + '/web/report'
+
+taxonomy_tmpl = root_dir + '/data/EDINET/taxonomy/%s/タクソノミ/taxonomy/'
+
+xbrl_idx = 0
+xbrl_basename = None
+
+
+xsd_dics: Dict[str, SchemaElement] = {}
+label_dics: Dict[str, bool] = {}
+
+dmp_cnt: Dict[str, int] = {}
+ctx_cnt: Dict[str, int] = {}
+join_cnt: Dict[str, int] = {}
 
 
 def splitUrlLabel(text):
@@ -378,11 +426,11 @@ def splitUrlLabel(text):
     return None, None
 
 
-def getAttribs(el : ET.Element):
+def getAttribs(el: ET.Element) -> Dict[str, str]:
     """属性のラベルと値の辞書を作って返す。
     """
     # 属性のラベルと値の辞書
-    attr = {}
+    attr: Dict[str, str] = {}
 
     for k, v in el.attrib.items():
         attr_url, attr_label = splitUrlLabel(k)
@@ -391,7 +439,11 @@ def getAttribs(el : ET.Element):
     return attr
 
 
-def parseElement(el : ET.Element):
+def parseElement(el: ET.Element):
+    """XMLの要素のid, URL, ラベル, テキストを返す。
+    :param el:
+    :return:
+    """
     id = el.get("id")
     text = el.text
 
@@ -417,7 +469,8 @@ def normUrl(url):
         yymmdd = v[5]
         name_cor = v[6]
 
-        # '/2013-08-31/タクソノミ/taxonomy/jpdei/2013-08-31/jpdei_cor_2013-08-31.xsd'
+        # url : http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2017-02-28/jppfs_cor
+        # url2: http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2017-02-28/jppfs_cor_2017-02-28.xsd
 
         file_name = name_cor + "_" + yymmdd + '.xsd'
         url2 = '/'.join(v[:6]) + '/' + file_name
@@ -435,14 +488,13 @@ def normUrl(url):
         return url
 
 
-
-def getTitleNsLabel(inf, text):
+def getTitleNsLabel(inf, text) -> SchemaElement:
     v1 = text.split(':')
     assert v1[0] in inf.local_ns_dic
     ns_url = inf.local_ns_dic[v1[0]]
     label = v1[1]
 
-    ele = getElement(inf, ns_url, label)
+    ele = getSchemaElement(inf, ns_url, label)
 
     return ele
 
@@ -498,7 +550,7 @@ def ReadLabel(el, xsd_dic, loc_dic, resource_dic):
         ReadLabel(child, xsd_dic, loc_dic, resource_dic)
 
 
-def readContext(inf, el : ET.Element, parent_label, ctx : Context):
+def readContext(inf, el: ET.Element, parent_label, ctx: Context):
     """コンテキストの情報を得る。
     """
     id, url, label, text = parseElement(el)
@@ -596,7 +648,7 @@ def readCalcArcs(xsd_dic, locs, arcs):
 
 # --------------------------------------------------------------------------------------------------------------
 
-def ReadSchema(inf, is_local, xsd_path, el: ET.Element, xsd_dic):
+def ReadSchema(inf, is_local, xsd_path, el: ET.Element, xsd_dic: Dict[str, SchemaElement]):
     url, label = splitUrlLabel(el.tag)
 
     if label == 'schema':
@@ -610,10 +662,10 @@ def ReadSchema(inf, is_local, xsd_path, el: ET.Element, xsd_dic):
 
     elif label == "element":
 
-        schema      = SchemaElement()
-        schema.url  = url
+        schema = SchemaElement()
+        schema.url = url
         schema.name = el.get("name")
-        schema.id   = el.get("id")
+        schema.id = el.get("id")
 
         type = el.get("type")
         if type in type_dic:
@@ -647,7 +699,7 @@ def parseNsUrl(inf, ns_url):
             file_name = name_cor + "_" + yymmdd + '.xsd'
         xsd_path = (taxonomy_tmpl % yymmdd) + name_space + '/' + yymmdd + '/' + file_name
         label_path = (
-                                 taxonomy_tmpl % yymmdd) + name_space + '/' + yymmdd + '/label/' + name_space + "_" + yymmdd + '_lab.xml'
+                             taxonomy_tmpl % yymmdd) + name_space + '/' + yymmdd + '/label/' + name_space + "_" + yymmdd + '_lab.xml'
 
     elif ns_url.startswith("http://disclosure.edinet-fsa.go.jp/"):
         # http://disclosure.edinet-fsa.go.jp/ifrs/q2r/001/E00949-000/2016-09-30/01/2016-11-04
@@ -743,7 +795,7 @@ def makeContext(inf, el, id):
         ctx.time = s
 
     v = [x for x in inf.local_top_context_nodes if x.time == ctx.time]
-    nd2 = find( x for x in inf.local_top_context_nodes if x.time == ctx.time )
+    nd2 = find(x for x in inf.local_top_context_nodes if x.time == ctx.time)
     if len(v) != 0:
         assert len(v) == 1
         nd = v[0]
@@ -812,7 +864,7 @@ def getNameSpace(inf, path):
     f.close()
 
 
-def GetSchemaLabelDic(inf, url):
+def GetSchemaLabelDic(inf, url) -> Dict[str, SchemaElement]:
     url = normUrl(url)
     xsd_path, label_path = parseNsUrl(inf, url)
 
@@ -828,7 +880,7 @@ def GetSchemaLabelDic(inf, url):
                 xsd_dic = xsd_dics[url]
 
             elif os.path.exists(xsd_path):
-                xsd_dic = {}
+                xsd_dic : Dict[str, SchemaElement] = {}
 
                 xsd_tree = ET.parse(xsd_path)
                 xsd_root = xsd_tree.getroot()
@@ -858,7 +910,7 @@ def GetSchemaLabelDic(inf, url):
     return xsd_dic
 
 
-def getElement(inf, url, label):
+def getSchemaElement(inf, url, label) -> SchemaElement:
     xsd_dic = GetSchemaLabelDic(inf, url)
 
     assert xsd_dic is not None and label in xsd_dic
@@ -879,7 +931,7 @@ def dumpSub(inf, el: ET.Element):
         pass
     else:
 
-        ele = getElement(inf, url, label)
+        ele : SchemaElement = getSchemaElement(inf, url, label)
 
         assert el.tag[0] == '{'
 
@@ -1040,7 +1092,7 @@ def readXbrl(inf, category_name, public_doc, xbrl_submissions):
         document_type = next(x for x in dt1.values if x.name == 'DocumentTypeDEI').text  # 様式
 
         web_path_len = len(root_dir + '/web/')
-        htm_path = [ str(x).replace('\\', '/')[web_path_len:] for x in Path(inf.cur_dir).glob("*.htm") ]
+        htm_path = [str(x).replace('\\', '/')[web_path_len:] for x in Path(inf.cur_dir).glob("*.htm")]
 
         revisions = [x for x in xbrl_submissions if x[0] == end_date]
         if any(revisions):
@@ -1096,6 +1148,14 @@ def make_public_docs_list(cpu_count):
 
 
 def readXbrlThread(cpu_count, cpu_id, public_docs, progress):
+    """
+    .. uml::
+
+        readXbrl -> join_ctx
+        join_ctx -> json.dump
+    """
+
+
     inf = Inf()
 
     inf.cpu_count = cpu_count
