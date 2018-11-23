@@ -1011,7 +1011,7 @@ def readCalc(inf):
             readCalcArcs(xsd_dic, locs, arcs)
 
 
-def readXbrl(inf, category_name, public_doc, xbrl_submissions):
+def readXbrl(inf, public_doc, xbrl_submissions):
     global xbrl_idx, prev_time, prev_cnt, xbrl_basename
 
     xbrl_list = list(public_doc.glob("*.xbrl"))
@@ -1035,7 +1035,7 @@ def readXbrl(inf, category_name, public_doc, xbrl_submissions):
             lap = "%d" % int(1000 * (time.time() - prev_time) / (cnt - prev_cnt))
             prev_time = time.time()
             prev_cnt = cnt
-            print(inf.cpu_id, lap, cnt, category_name)
+            print(inf.cpu_id, lap, cnt)
 
         inf.cur_dir = os.path.dirname(xbrl_path).replace('\\', '/')
 
@@ -1128,10 +1128,15 @@ def make_public_docs_list(cpu_count):
             cpu_idx = char_sum % cpu_count
 
             dic = public_docs_list[cpu_idx]
-            if edinet_code in dic:
-                dic[edinet_code].append([category_name, public_doc])
+            if category_name in dic:
+                edinet_code_dic = dic[category_name]
+                if edinet_code in edinet_code_dic:
+                    edinet_code_dic[edinet_code].append(public_doc)
+                else:
+                    edinet_code_dic[edinet_code] = [ public_doc ]
+
             else:
-                dic[edinet_code] = [[category_name, public_doc]]
+                dic[category_name] = { edinet_code: [public_doc] }
 
             if not edinet_code in edinet_codes:
                 edinet_codes.append(edinet_code)
@@ -1144,10 +1149,10 @@ def make_public_docs_list(cpu_count):
     with codecs.open(json_path, 'w', 'utf-8') as json_f:
         json.dump(category_edinet_codes, json_f, ensure_ascii=False)
 
-    return category_edinet_codes, public_docs_list
+    return public_docs_list
 
 
-def readXbrlThread(cpu_count, cpu_id, public_docs, progress):
+def readXbrlThread(cpu_count, cpu_id, category_name_dic, progress):
     """
     .. uml::
 
@@ -1163,59 +1168,61 @@ def readXbrlThread(cpu_count, cpu_id, public_docs, progress):
     inf.progress = progress
     inf.logf = open('%s/data/log-%d.txt' % (root_dir, cpu_id), 'w', encoding='utf-8')
 
-    for edinet_code in public_docs.keys():
-        dmp_cnt.clear()
-        ctx_cnt.clear()
-        join_cnt.clear()
-
-        xbrl_submissions = []
-        for category_name, public_doc in public_docs[edinet_code]:
-            readXbrl(inf, category_name, public_doc, xbrl_submissions)
-
+    for category_name in category_name_dic.keys():
         json_dir = "%s/web/json/%s" % (root_dir, category_name)
         if not os.path.exists(json_dir):
             os.makedirs(json_dir)
 
-        xbrl_submissions = sorted(xbrl_submissions, key=lambda x: x[0])
+        edinet_code_dic = category_name_dic[category_name]
+        for edinet_code, public_docs in edinet_code_dic.items():
+            dmp_cnt.clear()
+            ctx_cnt.clear()
+            join_cnt.clear()
 
-        end_date_objs_dic = {}
-        for end_date, num_submission, ctx_objs, htm_path in xbrl_submissions:
+            xbrl_submissions = []
+            for public_doc in public_docs:
+                readXbrl(inf, public_doc, xbrl_submissions)
 
-            for obj in ctx_objs:
+            xbrl_submissions = sorted(xbrl_submissions, key=lambda x: x[0])
 
-                if obj.time in end_date_objs_dic:
-                    end_date_objs_dic[obj.time].append((end_date, obj))
-                else:
-                    end_date_objs_dic[obj.time] = [(end_date, obj)]
+            end_date_objs_dic = {}
+            for end_date, num_submission, ctx_objs, htm_path in xbrl_submissions:
 
-        time_end_dates_unions = []
-        for time_name, end_date_objs in end_date_objs_dic.items():
-            inf.time_name = time_name
-            union = {}
-            time_end_dates = []
-            for idx, (end_date, obj) in enumerate(end_date_objs):
-                time_end_dates.append(end_date)
-                obj.join_ctx(inf, union, len(end_date_objs), idx)
+                for obj in ctx_objs:
 
-            time_end_dates_unions.append((time_name, time_end_dates, union))
+                    if obj.time in end_date_objs_dic:
+                        end_date_objs_dic[obj.time].append((end_date, obj))
+                    else:
+                        end_date_objs_dic[obj.time] = [(end_date, obj)]
 
-        time_end_dates_unions = sorted(time_end_dates_unions, key=lambda x: time_names_order.index(x[0]))
+            time_end_dates_unions = []
+            for time_name, end_date_objs in end_date_objs_dic.items():
+                inf.time_name = time_name
+                union = {}
+                time_end_dates = []
+                for idx, (end_date, obj) in enumerate(end_date_objs):
+                    time_end_dates.append(end_date)
+                    obj.join_ctx(inf, union, len(end_date_objs), idx)
 
-        end_dates = [x[0] for x in xbrl_submissions]
+                time_end_dates_unions.append((time_name, time_end_dates, union))
 
-        htm_paths = [x[3] for x in xbrl_submissions]
+            time_end_dates_unions = sorted(time_end_dates_unions, key=lambda x: time_names_order.index(x[0]))
 
-        doc = {'end_dates': end_dates, 'time_objs': time_end_dates_unions, 'htm_paths': htm_paths}
-        with codecs.open('%s/%s.json' % (json_dir, edinet_code), 'w', 'utf-8') as f:
-            json.dump(doc, f, ensure_ascii=False)
+            end_dates = [x[0] for x in xbrl_submissions]
 
-        log_dict_cnt(inf, 'dmp ', dmp_cnt)
-        log_dict_cnt(inf, 'ctx ', ctx_cnt)
-        log_dict_cnt(inf, 'join', join_cnt)
+            htm_paths = [x[3] for x in xbrl_submissions]
 
-        assert len(dmp_cnt) == len(ctx_cnt) and len(dmp_cnt) == len(join_cnt)
-        for k, v in dmp_cnt.items():
-            assert ctx_cnt[k] == v and join_cnt[k] == v
+            doc = {'end_dates': end_dates, 'time_objs': time_end_dates_unions, 'htm_paths': htm_paths}
+            with codecs.open('%s/%s.json' % (json_dir, edinet_code), 'w', 'utf-8') as f:
+                json.dump(doc, f, ensure_ascii=False)
+
+            log_dict_cnt(inf, 'dmp ', dmp_cnt)
+            log_dict_cnt(inf, 'ctx ', ctx_cnt)
+            log_dict_cnt(inf, 'join', join_cnt)
+
+            assert len(dmp_cnt) == len(ctx_cnt) and len(dmp_cnt) == len(join_cnt)
+            for k, v in dmp_cnt.items():
+                assert ctx_cnt[k] == v and join_cnt[k] == v
 
     inf.logf.close()
     print('CPU:%d 終了:%d' % (cpu_id, int(time.time() - start_time)))
@@ -1231,6 +1238,6 @@ if __name__ == '__main__':
     cpu_id = 0
 
     progress = Array('i', [0] * cpu_count)
-    category_edinet_codes, public_docs_list = make_public_docs_list(cpu_count)
+    public_docs_list = make_public_docs_list(cpu_count)
 
     readXbrlThread(cpu_count, cpu_id, public_docs_list[cpu_id], progress)

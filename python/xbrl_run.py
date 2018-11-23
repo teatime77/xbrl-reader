@@ -18,7 +18,7 @@ if __name__ == '__main__':
     cpu_count = multiprocessing.cpu_count()
 
     progress = Array('i', [0] * cpu_count)
-    category_edinet_codes, public_docs_list = make_public_docs_list(cpu_count)
+    public_docs_list = make_public_docs_list(cpu_count)
 
     process_list = []
     for cpu_id in range(cpu_count):
