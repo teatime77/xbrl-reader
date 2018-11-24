@@ -504,44 +504,6 @@ def ReadLabel(el, xsd_dic, loc_dic, resource_dic):
         ReadLabel(child, xsd_dic, loc_dic, resource_dic)
 
 
-def readContext(inf, el: ET.Element, parent_label, ctx: Context):
-    """コンテキストの情報を得る。
-    """
-    id, url, label, text = parseElement(el)
-
-    if label == "identifier":
-        assert parent_label == "entity"
-
-    elif label == "startDate":
-        assert parent_label == "period"
-        ctx.startDate = text
-    elif label == "endDate":
-        assert parent_label == "period"
-        ctx.endDate = text
-    elif label == "instant":
-        assert parent_label == "period"
-        ctx.instant = text
-
-    elif label == "explicitMember":
-        assert parent_label == "scenario"
-
-        dimension = el.get("dimension")
-        dimension_schema = getSchemaElementNsName(inf, dimension)
-
-        assert not dimension_schema in ctx.dimension_schemas
-
-        ctx.dimension_schemas.append(dimension_schema)
-
-        member_schema = getSchemaElementNsName(inf, text)
-
-        ctx.member_schemas.append(member_schema)
-
-    else:
-        assert label in ["context", "entity", "period", "scenario"]
-
-    for child in el:
-        readContext(inf, child, label, ctx)
-
 
 def setChildren(inf, ctx: ContextNode):
     if len(ctx.dimensions) != 0:
@@ -729,12 +691,56 @@ def parseNsUrl(inf, ns_url):
     return xsd_path, label_path
 
 
+def readContext(inf, el: ET.Element, parent_label, ctx: Context):
+    """コンテキストの情報を得る。
+    """
+    id, url, label, text = parseElement(el)
+
+    if label == "identifier":
+        assert parent_label == "entity"
+
+    elif label == "startDate":
+        assert parent_label == "period"
+        ctx.startDate = text
+    elif label == "endDate":
+        assert parent_label == "period"
+        ctx.endDate = text
+    elif label == "instant":
+        assert parent_label == "period"
+        ctx.instant = text
+
+    elif label == "explicitMember":
+        assert parent_label == "scenario"
+
+        dimension = el.get("dimension")
+
+        # 次元のスキーマを得る。
+        dimension_schema = getSchemaElementNsName(inf, dimension)
+
+        assert not dimension_schema in ctx.dimension_schemas
+
+        ctx.dimension_schemas.append(dimension_schema)
+
+        # メンバーのスキーマを得る。
+        member_schema = getSchemaElementNsName(inf, text)
+
+        ctx.member_schemas.append(member_schema)
+
+    else:
+        assert label in ["context", "entity", "period", "scenario"]
+
+    # 再帰的にコンテキストの情報を得る。
+    for child in el:
+        readContext(inf, child, label, ctx)
+
+
 def makeContextNode(inf, el, id):
     """Contextに対応するContextNodeを作る。
     """
     # コンテキストを作る。
     ctx = Context()
 
+    # コンテキストの情報を得る。
     readContext(inf, el, None, ctx)
 
     if len(ctx.dimension_schemas) == 0:
@@ -832,7 +838,8 @@ def make_local_ns_dic(inf, path):
 
 
 def GetSchemaLabelDic(inf, url) -> Dict[str, SchemaElement]:
-    """指定されたurlのスキーマファイルと
+    """指定されたurlのスキーマファイルの辞書を得る。
+    辞書がない場合は、スキーマファイルと対応する名称リンクファイルの内容の辞書を作る。
     """
     url = normUrl(url)
     xsd_path, label_path = parseNsUrl(inf, url)
@@ -933,6 +940,7 @@ def read_xbrl(inf, el: ET.Element):
                     inf.logf.write('dmp :%s %s %s\n' % (label, text, period_names[node.period]))
                     inc_key_cnt(dmp_cnt, node.period)
 
+    # 再帰的にXBRLファイルの内容を読む。
     for child in el:
         read_xbrl(inf, child)
 
@@ -962,8 +970,8 @@ def readCalcSub(inf, el, xsd_dic, locs, arcs):
                     arcs.append(el2)
 
     else:
+        # 再帰的に計算リンクファイルの内容を読む。
         for child in el:
-            # 再帰的に計算リンクファイルの内容を読む。
 
             # 計算リンクの計算関係を得る。
             readCalcSub(inf, child, xsd_dic, locs, arcs)
@@ -1093,15 +1101,22 @@ def read_public_doc(inf, category_name, public_doc, reports):
 
     # 報告書
     report = Report(end_date, num_submission, ctx_objs, htm_paths)
+
+    # 当会計期間終了日が同じ報告書のリスト ( 訂正報告書の場合 )
     revisions = [x for x in reports if x.end_date == end_date]
     if any(revisions):
+        # 当会計期間終了日が同じ報告書がある場合
 
         report2 = revisions[0]
         if True or report2.num_submission < num_submission:
+            # 提出回数の値が大きい場合
+
             # json_str_list.remove(x)
             reports.append(report)
 
     else:
+        # 当会計期間終了日が同じ報告書がない場合
+
         reports.append(report)
 
 
@@ -1284,6 +1299,7 @@ inf = Inf()
 # 計算リンクファイルを読む。
 readCalc(inf)
 
+# 指定されたurlのスキーマファイルと対応する名称リンクファイルの内容の辞書を作る。
 GetSchemaLabelDic(inf, "http://www.xbrl.org/2003/instance")
 
 if __name__ == '__main__':
