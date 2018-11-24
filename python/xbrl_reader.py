@@ -788,7 +788,9 @@ def makeContext(inf, el, id):
     inf.local_context_dic[id] = leaf_nd
 
 
-def getNameSpace(inf, path):
+def make_local_ns_dic(inf, path):
+    """名前空間の接頭辞とURLの辞書を作る。
+    """
     f = open(path)
     for line in f:
         if line.find("xmlns:") != -1:
@@ -874,12 +876,14 @@ def getSchemaElement(inf, url, label) -> SchemaElement:
     return ele
 
 
-def dumpSub(inf, el: ET.Element):
+def read_xbrl(inf, el: ET.Element):
+    """XBRLファイルの内容を読む。
+    """
     id, url, label, text = parseElement(el)
 
     if url == "http://www.xbrl.org/2003/instance" and label == "context":
         makeContext(inf, el, id)
-        return False
+        return
 
     # if url in [ "http://www.xbrl.org/2003/instance", "http://www.xbrl.org/2003/linkbase" ]:
     if url in ["http://www.xbrl.org/2003/linkbase"]:
@@ -893,31 +897,22 @@ def dumpSub(inf, el: ET.Element):
         context_ref = el.get("contextRef")
         # assert context_ref is not None
         if ele.type is None or context_ref is None:
-            return True
+            pass
+        else:
+            assert context_ref in inf.local_context_dic
+            ctx = inf.local_context_dic[context_ref]
 
-        assert context_ref in inf.local_context_dic
-        ctx = inf.local_context_dic[context_ref]
+            item = Item(ctx, ele, text)
+            ctx.values.append(item)
 
-        item = Item(ctx, ele, text)
-        ctx.values.append(item)
+            if ele.type == "金額":
+                name, label, verbose_label = ele.getLabel()
+                if label == '原材料及び貯蔵品':
+                    inf.logf.write('dmp :%s %s %s\n' % (label, text, period_names[ctx.period]))
+                    inc_key_cnt(dmp_cnt, ctx.period)
 
-        if ele.type == "金額":
-            name, label, verbose_label = ele.getLabel()
-            if label == '原材料及び貯蔵品':
-                inf.logf.write('dmp :%s %s %s\n' % (label, text, period_names[ctx.period]))
-                inc_key_cnt(dmp_cnt, ctx.period)
-
-    return True
-
-
-def make_tree(inf, el):
-    c = el.__class__
-    s = el.__class__.__name__
-    go_down = dumpSub(inf, el)
-
-    if go_down:
-        for child in el:
-            make_tree(inf, child)
+    for child in el:
+        read_xbrl(inf, child)
 
 
 def readCalcSub(inf, el, xsd_dic, locs, arcs):
@@ -982,7 +977,7 @@ def readCalc(inf):
     print('read cal end')
 
 
-def readXbrl(inf, category_name, public_doc, reports):
+def read_public_doc(inf, category_name, public_doc, reports):
     """XBRLフォルダー内のファイルを読む。
     """
     global xbrl_idx, prev_time, prev_cnt, xbrl_basename
@@ -1054,11 +1049,11 @@ def readXbrl(inf, category_name, public_doc, reports):
     local_label_path_list = list(Path(inf.cur_dir).glob("*_lab.xml"))
     assert len(local_label_path_list) == label_cnt
 
-    getNameSpace(inf, xbrl_path)
+    # 名前空間の接頭辞とURLの辞書を作る。
+    make_local_ns_dic(inf, xbrl_path)
 
-    tree = ET.parse(xbrl_path)
-    root = tree.getroot()
-    make_tree(inf, root)
+    # XBRLファイルの内容を読む。
+    read_xbrl(inf, ET.parse(xbrl_path).getroot())
 
     for ctx in inf.local_top_context_nodes:
         setChildren(inf, ctx)
@@ -1209,7 +1204,7 @@ def readXbrlThread(cpu_count, cpu_id, category_name_dic, progress):
             for public_doc in public_docs:
                 
                 # XBRLフォルダー内のファイルを読む。
-                readXbrl(inf, category_name, public_doc, reports)
+                read_public_doc(inf, category_name, public_doc, reports)
 
             # 当会計期間終了日でソートする。
             reports = sorted(reports, key=lambda x: x.end_date)
