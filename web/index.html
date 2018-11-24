@@ -141,23 +141,21 @@ function makeReport(){
     }
 
     var cnt = 0;
-    for(var idx = 0; idx < doc['end_dates'].length; idx++){
-        end_date = doc['end_dates'][idx];
-        htm_path = doc['htm_paths'][idx];
+    for(var report of doc['reports']){
 
         var grp = sub_win.document.createElement('optgroup');
-        grp.label= end_date;
+        grp.label= report['end_date'];
         report_sel.appendChild(grp);
         cnt++;
 
         // optgroup 
-        for(var htm of htm_path){
-            var k = htm.lastIndexOf('/');
-            var fname = htm.substr(k + 1, 14);
+        for(var htm_path of report['htm_paths']){
+            var k = htm_path.lastIndexOf('/');
+            var fname = htm_path.substr(k + 1, 14);
 
             var option = sub_win.document.createElement('option');
             option.innerHTML = fname;
-            option.value = htm;
+            option.value = htm_path;
             if(cnt == 1){
                 option.selected = true;
             }
@@ -187,11 +185,11 @@ function makeTable(doc){
         doc_div.removeChild(doc_div.firstChild);
     }
 
-    // doc = {'end_dates': end_dates, 'xbrl_data': xbrl_data, 'htm_paths': htm_paths}
-    for(var period_end_dates_union of doc['xbrl_data']){
-        [ period_name, end_dates, union ] = period_end_dates_union;
+    // json_data = { 'reports': reports_json, 'xbrl_union': xbrl_union }
+    for(var period_end_dates_union of doc['xbrl_union']){
+        [ period, end_dates, union ] = period_end_dates_union;
 
-        if(summary && summary_period_names.indexOf(period_name) == -1){
+        if(summary && summary_period_names.indexOf(period) == -1){
             continue;
         }
         if(true){
@@ -199,7 +197,7 @@ function makeTable(doc){
             doc_div.appendChild( document.createElement('hr') );
 
             h1  = document.createElement('h1');
-            h1.innerHTML = period_names[period_name];
+            h1.innerHTML = period_names[period];
             doc_div.appendChild(h1);
 
             table = document.createElement('table');

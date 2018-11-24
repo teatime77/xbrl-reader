@@ -263,8 +263,8 @@ class Item(XbrlNode):
         union['text'][idx] = self.text
 
         if self.schema.type == "金額" and self.label == '原材料及び貯蔵品':
-            inf.logf.write('union:%s %s %d %s\n' % (self.label, self.text, idx, period_names[inf.period_name]))
-            inc_key_cnt(join_cnt, inf.period_name)
+            inf.logf.write('union:%s %s %d %s\n' % (self.label, self.text, idx, period_names[inf.period]))
+            inc_key_cnt(join_cnt, inf.period)
 
         union['children'] = [x.union_item(inf, cnt, idx) for x in self.children]
 
@@ -335,16 +335,26 @@ class Calc:
         self.order = order
         self.weight = weight
 
+class Report:
+    """報告書
+    """
+    __slots__ = [ 'end_date', 'num_submission', 'ctx_objs', 'htm_paths' ]
+
+    def __init__(self, end_date, num_submission, ctx_objs, htm_paths):
+        self.end_date = end_date
+        self.num_submission = num_submission
+        self.ctx_objs = ctx_objs
+        self.htm_paths = htm_paths
 
 class Inf:
     __slots__ = ['cpu_count', 'cpu_id', 'cur_dir', 'local_context_dic', 'local_top_context_nodes', 'local_ns_dic',
-                 'local_xsd_dics', 'local_url2path', 'local_xsd_url2path', 'logf', 'progress', 'period_name']
+                 'local_xsd_dics', 'local_url2path', 'local_xsd_url2path', 'logf', 'progress', 'period']
 
     def __init__(self):
         self.cur_dir = None
         self.local_xsd_url2path = None
         self.local_xsd_dics = None
-        self.period_name = None
+        self.period = None
 
 start_time = time.time()
 prev_time = start_time
@@ -944,7 +954,7 @@ def readCalc(inf):
             readCalcArcs(xsd_dic, locs, arcs)
 
 
-def readXbrl(inf, category_name, public_doc, xbrl_submissions):
+def readXbrl(inf, category_name, public_doc, reports):
     """XBRLフォルダー内のファイルを読む。
     """
     global xbrl_idx, prev_time, prev_cnt, xbrl_basename
@@ -1027,18 +1037,20 @@ def readXbrl(inf, category_name, public_doc, xbrl_submissions):
         document_type = next(x for x in dt1.values if x.name == 'DocumentTypeDEI').text  # 様式
 
         web_path_len = len(root_dir + '/web/')
-        htm_path = [str(x).replace('\\', '/')[web_path_len:] for x in Path(inf.cur_dir).glob("*.htm")]
+        htm_paths = [str(x).replace('\\', '/')[web_path_len:] for x in Path(inf.cur_dir).glob("*.htm")]
 
-        revisions = [x for x in xbrl_submissions if x[0] == end_date]
+        # 報告書
+        report = Report(end_date, num_submission, ctx_objs, htm_paths)
+        revisions = [x for x in reports if x.end_date == end_date]
         if any(revisions):
 
-            end_date2, num_submission2, ctx_objs2, htm_path2 = revisions[0]
-            if True or num_submission2 < num_submission:
+            report2 = revisions[0]
+            if True or report2.num_submission < num_submission:
                 # json_str_list.remove(x)
-                xbrl_submissions.append((end_date, num_submission, ctx_objs, htm_path))
+                reports.append(report)
 
         else:
-            xbrl_submissions.append((end_date, num_submission, ctx_objs, htm_path))
+            reports.append(report)
 
 
 def make_public_docs_list(cpu_count):
@@ -1156,49 +1168,52 @@ def readXbrlThread(cpu_count, cpu_id, category_name_dic, progress):
             ctx_cnt.clear()
             join_cnt.clear()
 
-            xbrl_submissions = []
+            reports = []
 
             # 各XBRLフォルダーに対し
             for public_doc in public_docs:
                 
                 # XBRLフォルダー内のファイルを読む。
-                readXbrl(inf, category_name, public_doc, xbrl_submissions)
+                readXbrl(inf, category_name, public_doc, reports)
 
             # 当会計期間終了日でソートする。
-            xbrl_submissions = sorted(xbrl_submissions, key=lambda x: x[0])
+            reports = sorted(reports, key=lambda x: x.end_date)
 
             # 当会計期間終了日とでソートする。
             end_date_objs_dic = {}
-            for end_date, num_submission, ctx_objs, htm_path in xbrl_submissions:
+            for report in reports:
 
-                for obj in ctx_objs:
+                # 各期間のデータに対し
+                for obj in report.ctx_objs:
 
                     if obj.period in end_date_objs_dic:
-                        end_date_objs_dic[obj.period].append((end_date, obj))
+                        end_date_objs_dic[obj.period].append((report.end_date, obj))
                     else:
-                        end_date_objs_dic[obj.period] = [(end_date, obj)]
+                        end_date_objs_dic[obj.period] = [(report.end_date, obj)]
 
-            xbrl_data = []
-            for period_name, end_date_objs in end_date_objs_dic.items():
-                inf.period_name = period_name
+            # 期間別にXBRLデータを結合する。
+            xbrl_union = []
+            for period, end_date_objs in end_date_objs_dic.items():
+                inf.period = period
                 union = {}
-                period_end_dates = []
+                end_dates = []
                 for idx, (end_date, obj) in enumerate(end_date_objs):
-                    period_end_dates.append(end_date)
+                    end_dates.append(end_date)
                     obj.join_ctx(inf, union, len(end_date_objs), idx)
 
-                xbrl_data.append((period_name, period_end_dates, union))
+                xbrl_union.append((period, end_dates, union))
 
             # period_names_orderの期間名の順に並べ替える。
-            xbrl_data = sorted(xbrl_data, key=lambda x: period_names_order.index(x[0]))
+            xbrl_union = sorted(xbrl_union, key=lambda x: period_names_order.index(x[0]))
 
-            end_dates = [x[0] for x in xbrl_submissions]
+            reports_json = [ { 'end_date':x.end_date, 'htm_paths':x.htm_paths } for x in reports ]
 
-            htm_paths = [x[3] for x in xbrl_submissions]
+            # JSONデータを作る。
+            json_data = { 'reports': reports_json, 'xbrl_union': xbrl_union }
 
-            doc = {'end_dates': end_dates, 'xbrl_data': xbrl_data, 'htm_paths': htm_paths}
+            # JSONデータをファイルに書く。
             with codecs.open('%s/%s.json' % (json_dir, edinet_code), 'w', 'utf-8') as f:
-                json.dump(doc, f, ensure_ascii=False)
+                json.dump(json_data, f, ensure_ascii=False)
 
             log_dict_cnt(inf, 'dmp ', dmp_cnt)
             log_dict_cnt(inf, 'ctx ', ctx_cnt)
