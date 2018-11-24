@@ -348,7 +348,7 @@ class Report:
         self.htm_paths = htm_paths
 
 class Inf:
-    __slots__ = ['cpu_count', 'cpu_id', 'cur_dir', 'local_context_dic', 'local_top_context_nodes', 'local_ns_dic',
+    __slots__ = ['cpu_count', 'cpu_id', 'cur_dir', 'local_node_dic', 'local_top_context_nodes', 'local_ns_dic',
                  'local_xsd_dics', 'local_url2path', 'local_xsd_url2path', 'logf', 'progress', 'period']
 
     def __init__(self):
@@ -526,11 +526,11 @@ def readContext(inf, el: ET.Element, parent_label, ctx: Context):
         assert parent_label == "scenario"
 
         dimension = el.get("dimension")
-        dimension_ele = getSchemaElementNsName(inf, dimension)
+        dimension_schema = getSchemaElementNsName(inf, dimension)
 
-        assert not dimension_ele in ctx.dimension_schemas
+        assert not dimension_schema in ctx.dimension_schemas
 
-        ctx.dimension_schemas.append(dimension_ele)
+        ctx.dimension_schemas.append(dimension_schema)
 
         member_schema = getSchemaElementNsName(inf, text)
 
@@ -546,8 +546,8 @@ def readContext(inf, el: ET.Element, parent_label, ctx: Context):
 def setChildren(inf, ctx: ContextNode):
     if len(ctx.dimensions) != 0:
         for dimension in ctx.dimensions:
-            for nd in dimension.members:
-                setChildren(inf, nd)
+            for member in dimension.members:
+                setChildren(inf, member)
 
     if len(ctx.values) == 0:
         return
@@ -729,63 +729,80 @@ def parseNsUrl(inf, ns_url):
     return xsd_path, label_path
 
 
-def makeContext(inf, el, id):
+def makeContextNode(inf, el, id):
+    """Contextに対応するContextNodeを作る。
+    """
+    # コンテキストを作る。
     ctx = Context()
 
     readContext(inf, el, None, ctx)
-    assert len(ctx.dimension_schemas) == len(ctx.member_schemas)
 
     if len(ctx.dimension_schemas) == 0:
+        # 次元がない場合
 
         assert id in period_names
         ctx.period = id
 
     else:
+        # 次元がある場合
+
+        """
+        報告書インスタンス作成ガイドライン
+            5-4-1 コンテキストIDの命名規約
+                {相対期間又は時点}{期間又は時点}((_{メンバーの要素名})×n)(_{連番3桁})
+        """
 
         k = id.find('_')
         assert k != -1
-        s = id[:k]
-        assert s in period_names
-        ctx.period = s
+        period_name = id[:k]
+        assert period_name in period_names
+        ctx.period = period_name
 
-    nd = find(x for x in inf.local_top_context_nodes if x.period == ctx.period)
-    if nd is None:
-        nd = ContextNode(None)
-        nd.period = ctx.period
-        nd.startDate = ctx.startDate
-        nd.endDate = ctx.endDate
-        nd.instant = ctx.instant
+    # ツリー構造のトップノードの中で期間が同じものを探す。
+    node = find(x for x in inf.local_top_context_nodes if x.period == ctx.period)
+    if node is None:
+        # 期間が同じトップノードがない場合
 
-        inf.local_top_context_nodes.append(nd)
+        # トップノードを作る。
+        node = ContextNode(None)
+        node.period = ctx.period
+        node.startDate = ctx.startDate
+        node.endDate = ctx.endDate
+        node.instant = ctx.instant
 
-    leaf_nd = nd
+        # トップノードのリストに追加する。
+        inf.local_top_context_nodes.append(node)
+
+    # 各次元とメンバーの対に対し
     for dimension_schema, member_schema in zip(ctx.dimension_schemas, ctx.member_schemas):
+        # 次元の名前,ラベル,冗長ラベルを得る。
         name, label, verbose_label = dimension_schema.getLabel()
-        dimensions = [x for x in nd.dimensions if x.name == name]
-        if len(dimensions) == 0:
+
+        # 名前が同じ次元を探す。
+        dimension = find(x for x in node.dimensions if x.name == name)
+        if dimension is None:
+            # 名前が同じ次元がない場合
+
+            # 次元を作る。
             dimension = Dimension(dimension_schema, name, label, verbose_label)
-            nd.dimensions.append(dimension)
+            node.dimensions.append(dimension)
 
-        else:
-            assert len(dimensions) == 1
-            dimension = dimensions[0]
+        # スキーマが同じメンバーを探す。
+        leaf_node = find(x for x in dimension.members if x.schema == member_schema)
+        if leaf_node is None:
+            # スキーマが同じメンバーがない場合
 
-        member_list = [x for x in dimension.members if x.schema == member_schema]
-        if len(member_list) != 0:
-            assert len(member_list) == 1
+            # メンバーを作る。
+            leaf_node = ContextNode(member_schema)
 
-            leaf_nd = member_list[0]
-        else:
+            leaf_node.period = ctx.period
+            dimension.members.append(leaf_node)
 
-            leaf_nd = ContextNode(member_schema)
+        node = leaf_node
 
-            leaf_nd.period = ctx.period
-            dimension.members.append(leaf_nd)
-
-        nd = leaf_nd
-
-    assert not id in inf.local_context_dic
-    inf.local_context_dic[id] = leaf_nd
+    # ノードの辞書に追加する。
+    assert not id in inf.local_node_dic
+    inf.local_node_dic[id] = node
 
 
 def make_local_ns_dic(inf, path):
@@ -882,7 +899,9 @@ def read_xbrl(inf, el: ET.Element):
     id, url, label, text = parseElement(el)
 
     if url == "http://www.xbrl.org/2003/instance" and label == "context":
-        makeContext(inf, el, id)
+
+        # Contextに対応するContextNodeを作る。
+        makeContextNode(inf, el, id)
         return
 
     # if url in [ "http://www.xbrl.org/2003/instance", "http://www.xbrl.org/2003/linkbase" ]:
@@ -899,17 +918,20 @@ def read_xbrl(inf, el: ET.Element):
         if ele.type is None or context_ref is None:
             pass
         else:
-            assert context_ref in inf.local_context_dic
-            ctx = inf.local_context_dic[context_ref]
+            assert context_ref in inf.local_node_dic
+            node = inf.local_node_dic[context_ref]
 
-            item = Item(ctx, ele, text)
-            ctx.values.append(item)
+            # XBRLインスタンスの中の開示情報の項目
+            item = Item(node, ele, text)
+
+            # ノードの値に項目を追加する。
+            node.values.append(item)
 
             if ele.type == "金額":
                 name, label, verbose_label = ele.getLabel()
                 if label == '原材料及び貯蔵品':
-                    inf.logf.write('dmp :%s %s %s\n' % (label, text, period_names[ctx.period]))
-                    inc_key_cnt(dmp_cnt, ctx.period)
+                    inf.logf.write('dmp :%s %s %s\n' % (label, text, period_names[node.period]))
+                    inc_key_cnt(dmp_cnt, node.period)
 
     for child in el:
         read_xbrl(inf, child)
@@ -1003,7 +1025,7 @@ def read_public_doc(inf, category_name, public_doc, reports):
 
     inf.cur_dir = os.path.dirname(xbrl_path).replace('\\', '/')
 
-    inf.local_context_dic = {}
+    inf.local_node_dic = {}
     inf.local_top_context_nodes = []
 
     inf.local_ns_dic = {}
