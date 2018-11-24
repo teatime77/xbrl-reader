@@ -56,6 +56,7 @@ type_dic = {
     "xbrli:pureItemType": "純粋型"
 }
 
+# 報告書インスタンス作成ガイドラインの 5-4-5 コンテキストの設定例
 period_names_list = [
     ("FilingDateInstant", "提出日時点"),
     ("CurrentYearInstant", "当期連結時点"),
@@ -455,6 +456,8 @@ def getSchemaElementNsName(inf, text) -> SchemaElement:
 
 
 def ReadLabel(el, xsd_dic, loc_dic, resource_dic):
+    """名称リンクファイルの内容を読む。
+    """
     if el.tag[0] == '{':
 
         url, label = splitUrlLabel(el.tag)
@@ -573,6 +576,8 @@ def setChildren(inf, ctx: ContextNode):
 
 
 def readCalcArcs(xsd_dic, locs, arcs):
+    """計算リンクの計算関係を得る。
+    """
     for el2 in arcs:
         attr2 = getAttribs(el2)
         role = attr2['arcrole']
@@ -600,6 +605,8 @@ def readCalcArcs(xsd_dic, locs, arcs):
 # --------------------------------------------------------------------------------------------------------------
 
 def ReadSchema(inf, is_local, xsd_path, el: ET.Element, xsd_dic: Dict[str, SchemaElement]):
+    """スキーマファイルの内容を読む。
+    """
     url, label = splitUrlLabel(el.tag)
 
     if label == 'schema':
@@ -806,6 +813,8 @@ def getNameSpace(inf, path):
 
 
 def GetSchemaLabelDic(inf, url) -> Dict[str, SchemaElement]:
+    """指定されたurlのスキーマファイルと
+    """
     url = normUrl(url)
     xsd_path, label_path = parseNsUrl(inf, url)
 
@@ -826,6 +835,8 @@ def GetSchemaLabelDic(inf, url) -> Dict[str, SchemaElement]:
 
                 xsd_tree = ET.parse(xsd_path)
                 xsd_root = xsd_tree.getroot()
+
+                # スキーマファイルの内容を読む。
                 ReadSchema(inf, False, xsd_path, xsd_root, xsd_dic)
                 assert xsd_dics[url] == xsd_dic
 
@@ -846,6 +857,7 @@ def GetSchemaLabelDic(inf, url) -> Dict[str, SchemaElement]:
 
                 resource_dic = {}
                 loc_dic = {}
+                # 名称リンクファイルの内容を読む。
                 ReadLabel(label_root, xsd_dic, loc_dic, resource_dic)
 
                 label_dics[label_path] = True
@@ -909,6 +921,8 @@ def make_tree(inf, el):
 
 
 def readCalcSub(inf, el, xsd_dic, locs, arcs):
+    """計算リンクファイルの内容を読む。
+    """
     url, label = splitUrlLabel(el.tag)
 
     if label == 'calculationLink':
@@ -932,10 +946,16 @@ def readCalcSub(inf, el, xsd_dic, locs, arcs):
 
     else:
         for child in el:
+            # 再帰的に計算リンクファイルの内容を読む。
+
+            # 計算リンクの計算関係を得る。
             readCalcSub(inf, child, xsd_dic, locs, arcs)
 
 
 def readCalc(inf):
+    """計算リンクファイルを読む。
+    """
+    print('read cal...')
     name_space = 'jppfs'
     name_cor = 'jppfs_cor'
     for yymmdd in ['2018-02-28']:
@@ -944,14 +964,22 @@ def readCalc(inf):
 
         xsd_dic = {}
 
+        # スキーマファイルの内容を読む。
         ReadSchema(inf, False, xsd_path, ET.parse(xsd_path).getroot(), xsd_dic)
 
-        for xml_path in Path(xsd_base).glob('r/*/*.xml'):
-            xml_path = str(xml_path).replace('\\', '/')
+        # フォルダーの下の計算リンクファイルに対し
+        for xml_path_obj in Path(xsd_base).glob('r/*/*_cal_*.xml'):
+            xml_path = str(xml_path_obj).replace('\\', '/')
             locs = {}
             arcs = []
+
+            # 計算リンクファイルの内容を読む。
             readCalcSub(inf, ET.parse(xml_path).getroot(), xsd_dic, locs, arcs)
+
+            # 計算リンクの計算関係を得る。
             readCalcArcs(xsd_dic, locs, arcs)
+    
+    print('read cal end')
 
 
 def readXbrl(inf, category_name, public_doc, reports):
@@ -959,98 +987,105 @@ def readXbrl(inf, category_name, public_doc, reports):
     """
     global xbrl_idx, prev_time, prev_cnt, xbrl_basename
 
-    xbrl_list = list(public_doc.glob("*.xbrl"))
-    for p in xbrl_list:
+    xbrl_path_obj = find(public_doc.glob('jpcrp*.xbrl'))
+    assert xbrl_path_obj is not None
 
-        xbrl_path = str(p)
-        xbrl_basename = os.path.basename(xbrl_path)
-        inf.logf.write('%s ---------------------------------------------------\n' % xbrl_basename)
+    xbrl_path = str(xbrl_path_obj)
+    xbrl_basename = os.path.basename(xbrl_path)
+    inf.logf.write('%s ---------------------------------------------------\n' % xbrl_basename)
 
-        if xbrl_basename.startswith('ifrs-'):
-            assert len(xbrl_list) == 2
-            continue
+    # if xbrl_basename != 'jpcrp040300-q2r-001_E03369-000_2016-09-30_01_2016-11-14.xbrl':
+    #     continue
 
-        # if xbrl_basename != 'jpcrp040300-q2r-001_E03369-000_2016-09-30_01_2016-11-14.xbrl':
-        #     continue
+    xbrl_idx += 1
+    inf.progress[inf.cpu_id] = xbrl_idx
+    if xbrl_idx % 100 == 0:
+        cnt = sum(inf.progress)
+        lap = "%d" % int(1000 * (time.time() - prev_time) / (cnt - prev_cnt))
+        prev_time = time.time()
+        prev_cnt = cnt
+        print(inf.cpu_id, lap, cnt, category_name)
 
-        xbrl_idx += 1
-        inf.progress[inf.cpu_id] = xbrl_idx
-        if xbrl_idx % 100 == 0:
-            cnt = sum(inf.progress)
-            lap = "%d" % int(1000 * (time.time() - prev_time) / (cnt - prev_cnt))
-            prev_time = time.time()
-            prev_cnt = cnt
-            print(inf.cpu_id, lap, cnt, category_name)
+    inf.cur_dir = os.path.dirname(xbrl_path).replace('\\', '/')
 
-        inf.cur_dir = os.path.dirname(xbrl_path).replace('\\', '/')
+    inf.local_context_dic = {}
+    inf.local_top_context_nodes = []
 
-        inf.local_context_dic = {}
-        inf.local_top_context_nodes = []
+    inf.local_ns_dic = {}
+    inf.local_xsd_dics = {}
+    inf.local_url2path = {}
+    inf.local_xsd_url2path = {}
 
-        inf.local_ns_dic = {}
-        inf.local_xsd_dics = {}
-        inf.local_url2path = {}
-        inf.local_xsd_url2path = {}
+    label_cnt = 0
 
-        label_cnt = 0
+    # フォルダー内のxsdファイルに対し
+    for local_xsd_path_obj in Path(inf.cur_dir).glob("*.xsd"):
+        local_xsd_path_org = str(local_xsd_path_obj)
+        local_xsd_path = local_xsd_path_org.replace('\\', '/')
 
-        for local_xsd_path_obj in Path(inf.cur_dir).glob("*.xsd"):
-            local_xsd_path_org = str(local_xsd_path_obj)
-            local_xsd_path = local_xsd_path_org.replace('\\', '/')
+        local_xsd_dic = {}
 
-            local_xsd_dic = {}
+        # スキーマファイルの内容を読む。
+        ReadSchema(inf, True, local_xsd_path, ET.parse(local_xsd_path).getroot(), local_xsd_dic)
 
-            ReadSchema(inf, True, local_xsd_path, ET.parse(local_xsd_path).getroot(), local_xsd_dic)
+        # 名称リンクファイルのパス
+        local_label_path = local_xsd_path[:len(local_xsd_path) - 4] + "_lab.xml"
+        if os.path.exists(local_label_path):
+            # 名称リンクファイルがある場合
 
-            local_label_path = local_xsd_path[:len(local_xsd_path) - 4] + "_lab.xml"
-            if os.path.exists(local_label_path):
-                resource_dic = {}
-                loc_dic = {}
-                ReadLabel(ET.parse(str(local_label_path)).getroot(), local_xsd_dic, loc_dic, resource_dic)
-                label_cnt += 1
+            resource_dic = {}
+            loc_dic = {}
+            # 名称リンクファイルの内容を読む。
+            ReadLabel(ET.parse(str(local_label_path)).getroot(), local_xsd_dic, loc_dic, resource_dic)
+            label_cnt += 1
 
-            local_cal_path = local_xsd_path[:-4] + '_cal.xml'
-            if os.path.exists(local_cal_path):
-                locs = {}
-                arcs = []
-                readCalcSub(inf, ET.parse(local_cal_path).getroot(), local_xsd_dic, locs, arcs)
-                readCalcArcs(local_xsd_dic, locs, arcs)
+        # 計算ファイルのパス
+        local_cal_path = local_xsd_path[:-4] + '_cal.xml'
+        if os.path.exists(local_cal_path):
+            locs = {}
+            arcs = []
 
-        local_label_path_list = list(Path(inf.cur_dir).glob("*_lab.xml"))
-        assert len(local_label_path_list) == label_cnt
+            # 計算リンクファイルの内容を読む。
+            readCalcSub(inf, ET.parse(local_cal_path).getroot(), local_xsd_dic, locs, arcs)
 
-        getNameSpace(inf, xbrl_path)
+            # 計算リンクの計算関係を得る。
+            readCalcArcs(local_xsd_dic, locs, arcs)
 
-        tree = ET.parse(xbrl_path)
-        root = tree.getroot()
-        make_tree(inf, root)
+    local_label_path_list = list(Path(inf.cur_dir).glob("*_lab.xml"))
+    assert len(local_label_path_list) == label_cnt
 
-        for ctx in inf.local_top_context_nodes:
-            setChildren(inf, ctx)
+    getNameSpace(inf, xbrl_path)
 
-        ctx_objs = list(inf.local_top_context_nodes)
+    tree = ET.parse(xbrl_path)
+    root = tree.getroot()
+    make_tree(inf, root)
 
-        dt1 = next(x for x in ctx_objs if x.period == 'FilingDateInstant')  # 提出日時点
+    for ctx in inf.local_top_context_nodes:
+        setChildren(inf, ctx)
 
-        end_date = [x for x in dt1.values if x.name == 'CurrentPeriodEndDateDEI'][0].text  # 当会計期間終了日
-        num_submission = next(x for x in dt1.values if x.name == 'NumberOfSubmissionDEI').text  # 提出回数
-        document_type = next(x for x in dt1.values if x.name == 'DocumentTypeDEI').text  # 様式
+    ctx_objs = list(inf.local_top_context_nodes)
 
-        web_path_len = len(root_dir + '/web/')
-        htm_paths = [str(x).replace('\\', '/')[web_path_len:] for x in Path(inf.cur_dir).glob("*.htm")]
+    dt1 = next(x for x in ctx_objs if x.period == 'FilingDateInstant')  # 提出日時点
 
-        # 報告書
-        report = Report(end_date, num_submission, ctx_objs, htm_paths)
-        revisions = [x for x in reports if x.end_date == end_date]
-        if any(revisions):
+    end_date = [x for x in dt1.values if x.name == 'CurrentPeriodEndDateDEI'][0].text  # 当会計期間終了日
+    num_submission = next(x for x in dt1.values if x.name == 'NumberOfSubmissionDEI').text  # 提出回数
+    document_type = next(x for x in dt1.values if x.name == 'DocumentTypeDEI').text  # 様式
 
-            report2 = revisions[0]
-            if True or report2.num_submission < num_submission:
-                # json_str_list.remove(x)
-                reports.append(report)
+    web_path_len = len(root_dir + '/web/')
+    htm_paths = [str(x).replace('\\', '/')[web_path_len:] for x in Path(inf.cur_dir).glob("*.htm")]
 
-        else:
+    # 報告書
+    report = Report(end_date, num_submission, ctx_objs, htm_paths)
+    revisions = [x for x in reports if x.end_date == end_date]
+    if any(revisions):
+
+        report2 = revisions[0]
+        if True or report2.num_submission < num_submission:
+            # json_str_list.remove(x)
             reports.append(report)
+
+    else:
+        reports.append(report)
 
 
 def make_public_docs_list(cpu_count):
@@ -1228,6 +1263,8 @@ def readXbrlThread(cpu_count, cpu_id, category_name_dic, progress):
 
 
 inf = Inf()
+
+# 計算リンクファイルを読む。
 readCalc(inf)
 
 GetSchemaLabelDic(inf, "http://www.xbrl.org/2003/instance")
