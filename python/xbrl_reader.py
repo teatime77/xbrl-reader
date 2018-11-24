@@ -131,7 +131,7 @@ class Context:
     """
 
     def __init__(self):
-        self.time = None
+        self.period = None
         self.startDate = None
         self.endDate = None
         self.instant = None
@@ -171,7 +171,7 @@ class ContextNode(XbrlNode):
     def __init__(self, schema):
         super().__init__()
 
-        self.time = None
+        self.period = None
         self.startDate = None
         self.endDate = None
         self.instant = None
@@ -183,12 +183,12 @@ class ContextNode(XbrlNode):
     def join_ctx(self, inf, union, cnt, idx):
         """期間別データに単一期間のノードをセットする。
         """
-        if self.time is not None:
+        if self.period is not None:
 
-            if 'time' in union:
-                assert union['time'] == self.time
+            if 'period' in union:
+                assert union['period'] == self.period
             else:
-                union['time'] = self.time
+                union['period'] = self.period
 
         if self.schema is not None:
             self.copy_name_label(union)
@@ -279,8 +279,8 @@ class Item(XbrlNode):
         union['text'][idx] = self.text
 
         if self.schema.type == "金額" and self.label == '原材料及び貯蔵品':
-            inf.logf.write('join:%s %s %s\n' % (self.label, self.text, time_names[self.ctx.time]))
-            inc_key_cnt(join_cnt, self.ctx.time)
+            inf.logf.write('join:%s %s %s\n' % (self.label, self.text, time_names[self.ctx.period]))
+            inc_key_cnt(join_cnt, self.ctx.period)
 
         union_children = union['children']
         for child in self.children:
@@ -400,20 +400,10 @@ def parseElement(el: ET.Element):
     :return:
     """
     id = el.get("id")
-    text = el.text
 
-    if el.tag[0] == '{':
-        i = el.tag.index('}')
-        url = el.tag[1:i]
-        label = el.tag[i + 1:]
-    else:
-        url = None
-        label = None
+    url, label = splitUrlLabel(el.tag)
 
-    url1, label1 = splitUrlLabel(el.tag)
-    assert url1 == url and label1 == label
-
-    return id, url, label, text
+    return id, url, label, el.text
 
 
 def normUrl(url):
@@ -443,25 +433,21 @@ def normUrl(url):
         return url
 
 
-def getTitleNsLabel(inf, text) -> SchemaElement:
-    v1 = text.split(':')
-    assert v1[0] in inf.local_ns_dic
-    ns_url = inf.local_ns_dic[v1[0]]
-    label = v1[1]
+def getSchemaElementNsName(inf, text) -> SchemaElement:
+    v = text.split(':')
+    assert v[0] in inf.local_ns_dic
+    ns_url = inf.local_ns_dic[v[0]]
+    name = v[1]
 
-    ele = getSchemaElement(inf, ns_url, label)
+    ele = getSchemaElement(inf, ns_url, name)
 
     return ele
 
 
 def ReadLabel(el, xsd_dic, loc_dic, resource_dic):
     if el.tag[0] == '{':
-        i = el.tag.index('}')
-        url = el.tag[1:i]
-        label = el.tag[i + 1:]
 
-        url1, label1 = splitUrlLabel(el.tag)
-        assert url1 == url and label1 == label
+        url, label = splitUrlLabel(el.tag)
 
         if label == "loc":
 
@@ -527,13 +513,13 @@ def readContext(inf, el: ET.Element, parent_label, ctx: Context):
         assert parent_label == "scenario"
 
         dimension = el.get("dimension")
-        dimension_ele = getTitleNsLabel(inf, dimension)
+        dimension_ele = getSchemaElementNsName(inf, dimension)
 
         assert not dimension_ele in ctx.dimension_schemas
 
         ctx.dimension_schemas.append(dimension_ele)
 
-        member_schema = getTitleNsLabel(inf, text)
+        member_schema = getSchemaElementNsName(inf, text)
 
         ctx.member_schemas.append(member_schema)
 
@@ -570,8 +556,8 @@ def setChildren(inf, ctx: ContextNode):
         if item.schema.type == "金額":
             name, label, verbose_label = item.schema.getLabel()
             if label == '原材料及び貯蔵品':
-                inf.logf.write('ctx :%s %s %s\n' % (label, item.text, time_names[ctx.time]))
-                inc_key_cnt(ctx_cnt, ctx.time)
+                inf.logf.write('ctx :%s %s %s\n' % (label, item.text, time_names[ctx.period]))
+                inc_key_cnt(ctx_cnt, ctx.period)
 
     ctx.values = top_items
 
@@ -735,7 +721,7 @@ def makeContext(inf, el, id):
     if len(ctx.dimension_schemas) == 0:
 
         assert id in time_names
-        ctx.time = id
+        ctx.period = id
 
     else:
 
@@ -743,12 +729,12 @@ def makeContext(inf, el, id):
         assert k != -1
         s = id[:k]
         assert s in time_names
-        ctx.time = s
+        ctx.period = s
 
-    nd = find(x for x in inf.local_top_context_nodes if x.time == ctx.time)
+    nd = find(x for x in inf.local_top_context_nodes if x.period == ctx.period)
     if nd is None:
         nd = ContextNode(None)
-        nd.time = ctx.time
+        nd.period = ctx.period
         nd.startDate = ctx.startDate
         nd.endDate = ctx.endDate
         nd.instant = ctx.instant
@@ -776,7 +762,7 @@ def makeContext(inf, el, id):
 
             leaf_nd = ContextNode(member_schema)
 
-            leaf_nd.time = ctx.time
+            leaf_nd.period = ctx.period
             dimension.members.append(leaf_nd)
 
         nd = leaf_nd
@@ -896,8 +882,8 @@ def dumpSub(inf, el: ET.Element):
         if ele.type == "金額":
             name, label, verbose_label = ele.getLabel()
             if label == '原材料及び貯蔵品':
-                inf.logf.write('dmp :%s %s %s\n' % (label, text, time_names[ctx.time]))
-                inc_key_cnt(dmp_cnt, ctx.time)
+                inf.logf.write('dmp :%s %s %s\n' % (label, text, time_names[ctx.period]))
+                inc_key_cnt(dmp_cnt, ctx.period)
 
     return True
 
@@ -959,6 +945,8 @@ def readCalc(inf):
 
 
 def readXbrl(inf, category_name, public_doc, xbrl_submissions):
+    """XBRLフォルダー内のファイルを読む。
+    """
     global xbrl_idx, prev_time, prev_cnt, xbrl_basename
 
     xbrl_list = list(public_doc.glob("*.xbrl"))
@@ -1032,7 +1020,7 @@ def readXbrl(inf, category_name, public_doc, xbrl_submissions):
 
         ctx_objs = list(inf.local_top_context_nodes)
 
-        dt1 = next(x for x in ctx_objs if x.time == 'FilingDateInstant')  # 提出日時点
+        dt1 = next(x for x in ctx_objs if x.period == 'FilingDateInstant')  # 提出日時点
 
         end_date = [x for x in dt1.values if x.name == 'CurrentPeriodEndDateDEI'][0].text  # 当会計期間終了日
         num_submission = next(x for x in dt1.values if x.name == 'NumberOfSubmissionDEI').text  # 提出回数
@@ -1054,48 +1042,88 @@ def readXbrl(inf, category_name, public_doc, xbrl_submissions):
 
 
 def make_public_docs_list(cpu_count):
+    # カテゴリー別のEDINETコードのリスト
     category_edinet_codes = []
 
+    # カテゴリー・EDINETコード別のXBRLフォルダーの辞書を各CPUごとに作る。
     public_docs_list = [{} for i in range(cpu_count)]
+
+    # 各カテゴリー別のフォルダーに対し
     for category_dir in Path(report_path).glob("*"):
         category_name = os.path.basename(str(category_dir))
 
+        # カテゴリー内のEDINETコードのリスト
         edinet_codes = []
+
+        # カテゴリー別のEDINETコードのリストに追加する。
         category_edinet_codes.append({'category_name': category_name, 'edinet_codes': edinet_codes})
 
+        # カテゴリー内の'XBRL/PublicDoc'のフォルダーに対し
         for public_doc in category_dir.glob("*/*/XBRL/PublicDoc"):
+            # jpcrpのxbrlファイルを得る。( ifrsのxbrlファイルは使わない。 )
             xbrl_path_list = list(public_doc.glob('jpcrp*.xbrl'))
             assert len(xbrl_path_list) == 1
 
             xbrl_path_0 = xbrl_path_list[0]
+
+            # パスの中のファイル名を得る。
+            # 'jpcrp040300-q2r-001_E03739-000_2017-09-30_01_2017-11-14.xbrl'
             xbrl_path_0_basename = os.path.basename(str(xbrl_path_0))
+
+            # ファイル名を'-'と'_'で区切る。
             items = re.split('[-_]', xbrl_path_0_basename)
+
+            # EDINETコードを得る。
             edinet_code = items[3]
+
+            # EDINETコードの各文字のUNICODEの合計値
             char_sum = sum(ord(x) for x in edinet_code)
+
+            # このEDINETコードのXBRLを処理するCPUのインデックスを決める。
             cpu_idx = char_sum % cpu_count
 
+            # このCPUのカテゴリー別・EDINETコード別のXBRLフォルダーの辞書
             dic = public_docs_list[cpu_idx]
+            
             if category_name in dic:
+                # このカテゴリーがすでに辞書にある場合
+
+                # EDINETコードの辞書
                 edinet_code_dic = dic[category_name]
                 if edinet_code in edinet_code_dic:
+                    # このEDINETコードがすでに辞書にある場合
+
                     edinet_code_dic[edinet_code].append(public_doc)
                 else:
+                    # このEDINETコードが辞書にない場合
+
                     edinet_code_dic[edinet_code] = [ public_doc ]
 
             else:
+                # このカテゴリーがすでに辞書にない場合
+
                 dic[category_name] = { edinet_code: [public_doc] }
 
             if not edinet_code in edinet_codes:
+                # カテゴリー内のEDINETコードのリストにない場合
+
                 edinet_codes.append(edinet_code)
 
+    # JSONを入れるフォルダー
     json_dir = root_dir + "/web/json"
     if not os.path.exists(json_dir):
+        # フォルダーがなければ作る。
+
         os.makedirs(json_dir)
 
+    # カテゴリー別のEDINETコードのリストのJSONのパス
     json_path = json_dir + '/category_edinet_codes.json'
+
+    # JSONをファイルに書く。
     with codecs.open(json_path, 'w', 'utf-8') as json_f:
         json.dump(category_edinet_codes, json_f, ensure_ascii=False)
 
+    # 各CPUごとの、カテゴリー・EDINETコード別のXBRLフォルダーの辞書を返す。
     return public_docs_list
 
 
@@ -1110,32 +1138,45 @@ def readXbrlThread(cpu_count, cpu_id, category_name_dic, progress):
     inf.progress = progress
     inf.logf = open('%s/data/log-%d.txt' % (root_dir, cpu_id), 'w', encoding='utf-8')
 
+    # 各カテゴリー名に対し
     for category_name in category_name_dic.keys():
+        # JSONを入れるフォルダー
         json_dir = "%s/web/json/%s" % (root_dir, category_name)
+
         if not os.path.exists(json_dir):
+            # フォルダーがなければ作る。
             os.makedirs(json_dir)
 
+        # EDINETコードの辞書
         edinet_code_dic = category_name_dic[category_name]
+
+        # EDINETコードとXBRLフォルダーのリストに対し
         for edinet_code, public_docs in edinet_code_dic.items():
             dmp_cnt.clear()
             ctx_cnt.clear()
             join_cnt.clear()
 
             xbrl_submissions = []
+
+            # 各XBRLフォルダーに対し
             for public_doc in public_docs:
+                
+                # XBRLフォルダー内のファイルを読む。
                 readXbrl(inf, category_name, public_doc, xbrl_submissions)
 
+            # 当会計期間終了日でソートする。
             xbrl_submissions = sorted(xbrl_submissions, key=lambda x: x[0])
 
+            # 当会計期間終了日とでソートする。
             end_date_objs_dic = {}
             for end_date, num_submission, ctx_objs, htm_path in xbrl_submissions:
 
                 for obj in ctx_objs:
 
-                    if obj.time in end_date_objs_dic:
-                        end_date_objs_dic[obj.time].append((end_date, obj))
+                    if obj.period in end_date_objs_dic:
+                        end_date_objs_dic[obj.period].append((end_date, obj))
                     else:
-                        end_date_objs_dic[obj.time] = [(end_date, obj)]
+                        end_date_objs_dic[obj.period] = [(end_date, obj)]
 
             time_end_dates_unions = []
             for time_name, end_date_objs in end_date_objs_dic.items():
