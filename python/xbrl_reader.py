@@ -35,7 +35,7 @@ def log_dict_cnt(inf, name, dic: dict):
     """辞書の値をログファイルに書く。
     """
     for k, v in dic.items():
-        inf.logf.write('%s %s %d\n' % (name, time_names[k], v))
+        inf.logf.write('%s %s %d\n' % (name, period_names[k], v))
 
 
 label_role = "http://www.xbrl.org/2003/role/label"
@@ -56,7 +56,7 @@ type_dic = {
     "xbrli:pureItemType": "純粋型"
 }
 
-time_names_list = [
+period_names_list = [
     ("FilingDateInstant", "提出日時点"),
     ("CurrentYearInstant", "当期連結時点"),
     ("CurrentYearDuration", "当期連結期間"),
@@ -84,9 +84,9 @@ time_names_list = [
     ("Prior5YearDuration", "Prior5YearDuration"),
 ]
 
-time_names_order = [x[0] for x in time_names_list]
+period_names_order = [x[0] for x in period_names_list]
 
-time_names = dict(x for x in time_names_list)
+period_names = dict(x for x in period_names_list)
 
 
 def findObj(v: dict, key, val):
@@ -263,8 +263,8 @@ class Item(XbrlNode):
         union['text'][idx] = self.text
 
         if self.schema.type == "金額" and self.label == '原材料及び貯蔵品':
-            inf.logf.write('union:%s %s %d %s\n' % (self.label, self.text, idx, time_names[inf.time_name]))
-            inc_key_cnt(join_cnt, inf.time_name)
+            inf.logf.write('union:%s %s %d %s\n' % (self.label, self.text, idx, period_names[inf.period_name]))
+            inc_key_cnt(join_cnt, inf.period_name)
 
         union['children'] = [x.union_item(inf, cnt, idx) for x in self.children]
 
@@ -279,7 +279,7 @@ class Item(XbrlNode):
         union['text'][idx] = self.text
 
         if self.schema.type == "金額" and self.label == '原材料及び貯蔵品':
-            inf.logf.write('join:%s %s %s\n' % (self.label, self.text, time_names[self.ctx.period]))
+            inf.logf.write('join:%s %s %s\n' % (self.label, self.text, period_names[self.ctx.period]))
             inc_key_cnt(join_cnt, self.ctx.period)
 
         union_children = union['children']
@@ -338,13 +338,13 @@ class Calc:
 
 class Inf:
     __slots__ = ['cpu_count', 'cpu_id', 'cur_dir', 'local_context_dic', 'local_top_context_nodes', 'local_ns_dic',
-                 'local_xsd_dics', 'local_url2path', 'local_xsd_url2path', 'logf', 'progress', 'time_name']
+                 'local_xsd_dics', 'local_url2path', 'local_xsd_url2path', 'logf', 'progress', 'period_name']
 
     def __init__(self):
         self.cur_dir = None
         self.local_xsd_url2path = None
         self.local_xsd_dics = None
-        self.time_name = None
+        self.period_name = None
 
 start_time = time.time()
 prev_time = start_time
@@ -556,7 +556,7 @@ def setChildren(inf, ctx: ContextNode):
         if item.schema.type == "金額":
             name, label, verbose_label = item.schema.getLabel()
             if label == '原材料及び貯蔵品':
-                inf.logf.write('ctx :%s %s %s\n' % (label, item.text, time_names[ctx.period]))
+                inf.logf.write('ctx :%s %s %s\n' % (label, item.text, period_names[ctx.period]))
                 inc_key_cnt(ctx_cnt, ctx.period)
 
     ctx.values = top_items
@@ -720,7 +720,7 @@ def makeContext(inf, el, id):
 
     if len(ctx.dimension_schemas) == 0:
 
-        assert id in time_names
+        assert id in period_names
         ctx.period = id
 
     else:
@@ -728,7 +728,7 @@ def makeContext(inf, el, id):
         k = id.find('_')
         assert k != -1
         s = id[:k]
-        assert s in time_names
+        assert s in period_names
         ctx.period = s
 
     nd = find(x for x in inf.local_top_context_nodes if x.period == ctx.period)
@@ -882,7 +882,7 @@ def dumpSub(inf, el: ET.Element):
         if ele.type == "金額":
             name, label, verbose_label = ele.getLabel()
             if label == '原材料及び貯蔵品':
-                inf.logf.write('dmp :%s %s %s\n' % (label, text, time_names[ctx.period]))
+                inf.logf.write('dmp :%s %s %s\n' % (label, text, period_names[ctx.period]))
                 inc_key_cnt(dmp_cnt, ctx.period)
 
     return True
@@ -1178,24 +1178,25 @@ def readXbrlThread(cpu_count, cpu_id, category_name_dic, progress):
                     else:
                         end_date_objs_dic[obj.period] = [(end_date, obj)]
 
-            time_end_dates_unions = []
-            for time_name, end_date_objs in end_date_objs_dic.items():
-                inf.time_name = time_name
+            xbrl_data = []
+            for period_name, end_date_objs in end_date_objs_dic.items():
+                inf.period_name = period_name
                 union = {}
-                time_end_dates = []
+                period_end_dates = []
                 for idx, (end_date, obj) in enumerate(end_date_objs):
-                    time_end_dates.append(end_date)
+                    period_end_dates.append(end_date)
                     obj.join_ctx(inf, union, len(end_date_objs), idx)
 
-                time_end_dates_unions.append((time_name, time_end_dates, union))
+                xbrl_data.append((period_name, period_end_dates, union))
 
-            time_end_dates_unions = sorted(time_end_dates_unions, key=lambda x: time_names_order.index(x[0]))
+            # period_names_orderの期間名の順に並べ替える。
+            xbrl_data = sorted(xbrl_data, key=lambda x: period_names_order.index(x[0]))
 
             end_dates = [x[0] for x in xbrl_submissions]
 
             htm_paths = [x[3] for x in xbrl_submissions]
 
-            doc = {'end_dates': end_dates, 'time_objs': time_end_dates_unions, 'htm_paths': htm_paths}
+            doc = {'end_dates': end_dates, 'xbrl_data': xbrl_data, 'htm_paths': htm_paths}
             with codecs.open('%s/%s.json' % (json_dir, edinet_code), 'w', 'utf-8') as f:
                 json.dump(doc, f, ensure_ascii=False)
 

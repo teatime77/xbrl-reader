@@ -187,11 +187,11 @@ function makeTable(doc){
         doc_div.removeChild(doc_div.firstChild);
     }
 
-    // doc = { 'end_dates': end_dates, 'time_objs': time_end_dates_unions }
-    for(var time_end_dates_union of doc['time_objs']){
-        [ time_name, end_dates, union ] = time_end_dates_union;
+    // doc = {'end_dates': end_dates, 'xbrl_data': xbrl_data, 'htm_paths': htm_paths}
+    for(var period_end_dates_union of doc['xbrl_data']){
+        [ period_name, end_dates, union ] = period_end_dates_union;
 
-        if(summary && summary_time_names.indexOf(time_name) == -1){
+        if(summary && summary_period_names.indexOf(period_name) == -1){
             continue;
         }
         if(true){
@@ -199,7 +199,7 @@ function makeTable(doc){
             doc_div.appendChild( document.createElement('hr') );
 
             h1  = document.createElement('h1');
-            h1.innerHTML = time_names[time_name];
+            h1.innerHTML = period_names[period_name];
             doc_div.appendChild(h1);
 
             table = document.createElement('table');
@@ -268,8 +268,6 @@ function on_load(){
     drawChart();
     category_select = document.getElementById('category');
     edinet_codes_select = document.getElementById('edinet_codes');
-
-    readXbrl('医薬品', 'E00816');
 
     json_path = 'json/category_edinet_codes.json'
     $.ajax({ // json読み込み開始

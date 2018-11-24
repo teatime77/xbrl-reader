@@ -1,4 +1,4 @@
-time_names_list = [
+period_names_list = [
     ["FilingDateInstant"    , "提出日時点"],
     ["CurrentYearInstant"   ,"当期連結時点"],
     ["CurrentYearDuration"  , "当期連結期間"],
@@ -26,14 +26,14 @@ time_names_list = [
     ["Prior5YearDuration"   , "Prior5YearDuration"],
 ];
 
-time_names_order = time_names_list.map(x => x[0]);
+period_names_order = period_names_list.map(x => x[0]);
 
-time_names = {};
-for(var x of time_names_list){
-    time_names[x[0]] = x[1];
+period_names = {};
+for(var x of period_names_list){
+    period_names[x[0]] = x[1];
 }
 
-summary_time_names = [
+summary_period_names = [
     "FilingDateInstant"    ,
     "CurrentYearInstant"   ,
     "CurrentYearDuration"  ,
