@@ -105,7 +105,7 @@ class SchemaElement:
     """
 
     def __init__(self):
-        self.url = None
+        self.uri = None
         self.name = None
         self.id = None
         self.type = None
@@ -122,7 +122,7 @@ class SchemaElement:
 
     def getLabel(self):
         if self.verbose_label is None and self.label is None:
-            assert self.url in ['http://www.xbrl.org/2003/instance', 'http://www.w3.org/2001/XMLSchema']
+            assert self.uri in ['http://www.xbrl.org/2003/instance', 'http://www.w3.org/2001/XMLSchema']
 
         return self.name, self.label, self.verbose_label
 
@@ -349,11 +349,11 @@ class Report:
 
 class Inf:
     __slots__ = ['cpu_count', 'cpu_id', 'cur_dir', 'local_node_dic', 'local_top_context_nodes', 'local_ns_dic',
-                 'local_xsd_dics', 'local_url2path', 'local_xsd_url2path', 'logf', 'progress', 'period']
+                 'local_xsd_dics', 'local_uri2path', 'local_xsd_uri2path', 'logf', 'progress', 'period']
 
     def __init__(self):
         self.cur_dir = None
-        self.local_xsd_url2path = None
+        self.local_xsd_uri2path = None
         self.local_xsd_dics = None
         self.period = None
 
@@ -378,16 +378,16 @@ ctx_cnt: Dict[str, int] = {}
 join_cnt: Dict[str, int] = {}
 
 
-def splitUrlLabel(text):
-    """テキストをURL部分とラベル部分に分割する。
-    例 : {http://www.w3.org/1999/xlink}href
+def split_uri_name(text):
+    """テキストをURI部分と名前部分に分割する。
+    例 : {http://www.xbrl.org/2003/linkbase}calculationArc
     """
     if text[0] == '{':
         i = text.index('}')
-        url = text[1:i]
-        label = text[i + 1:]
+        uri = text[1:i]
+        tag_name = text[i + 1:]
 
-        return url, label
+        return uri, tag_name
 
     return None, None
 
@@ -399,41 +399,41 @@ def getAttribs(el: ET.Element) -> Dict[str, str]:
     attr: Dict[str, str] = {}
 
     for k, v in el.attrib.items():
-        attr_url, attr_label = splitUrlLabel(k)
-        attr[attr_label] = v
+        attr_uri, attr_name = split_uri_name(k)
+        attr[attr_name] = v
 
     return attr
 
 
 def parseElement(el: ET.Element):
-    """XMLの要素のid, URL, ラベル, テキストを返す。
+    """XMLの要素のid, URI, 名前, テキストを返す。
     :param el:
     :return:
     """
     id = el.get("id")
 
-    url, label = splitUrlLabel(el.tag)
+    uri, tag_name = split_uri_name(el.tag)
 
-    return id, url, label, el.text
+    return id, uri, tag_name, el.text
 
 
-def normUrl(url):
-    if not url.endswith('.xsd') and url.startswith('http://disclosure.edinet-fsa.go.jp/taxonomy/'):
-        v = url.split('/')
+def normUrl(uri):
+    if not uri.endswith('.xsd') and uri.startswith('http://disclosure.edinet-fsa.go.jp/taxonomy/'):
+        v = uri.split('/')
 
         name_space = v[4]
         yymmdd = v[5]
         name_cor = v[6]
 
-        # url : http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2017-02-28/jppfs_cor
-        # url2: http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2017-02-28/jppfs_cor_2017-02-28.xsd
+        # uri : http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2017-02-28/jppfs_cor
+        # uri2: http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2017-02-28/jppfs_cor_2017-02-28.xsd
 
         file_name = name_cor + "_" + yymmdd + '.xsd'
-        url2 = '/'.join(v[:6]) + '/' + file_name
+        uri2 = '/'.join(v[:6]) + '/' + file_name
 
-        return url2
+        return uri2
 
-    elif url in [
+    elif uri in [
         'http://xbrl.ifrs.org/taxonomy/2015-03-11/ifrs-full',
         'http://xbrl.ifrs.org/taxonomy/2014-03-05/ifrs-full',
         'http://xbrl.ifrs.org/taxonomy/2014-03-05/full_ifrs/full_ifrs-cor_2014-03-05.xsd'
@@ -441,11 +441,14 @@ def normUrl(url):
         return 'http://xbrl.ifrs.org/taxonomy/2015-03-11/full_ifrs/full_ifrs-cor_2015-03-11.xsd'
 
     else:
-        return url
+        return uri
 
 
 def getSchemaElementNsName(inf, text) -> SchemaElement:
     v = text.split(':')
+    prefix, tag_name = text.split(':')
+    assert prefix == v[0] and tag_name == v[1]
+
     assert v[0] in inf.local_ns_dic
     ns_url = inf.local_ns_dic[v[0]]
     name = v[1]
@@ -460,9 +463,9 @@ def ReadLabel(el, xsd_dic, loc_dic, resource_dic):
     """
     if el.tag[0] == '{':
 
-        url, label = splitUrlLabel(el.tag)
+        uri, tag_name = split_uri_name(el.tag)
 
-        if label == "loc":
+        if tag_name == "loc":
 
             attr = getAttribs(el)
             assert 'href' in attr and 'label' in attr
@@ -472,7 +475,7 @@ def ReadLabel(el, xsd_dic, loc_dic, resource_dic):
             assert len(v) == 2
             loc_dic[attr['label']] = v[1]
 
-        elif label == "label":
+        elif tag_name == "label":
 
             attr = getAttribs(el)
             if 'label' in attr and 'role' in attr:
@@ -486,7 +489,7 @@ def ReadLabel(el, xsd_dic, loc_dic, resource_dic):
                 return
             # assert id.startswith("label_")
 
-        elif label == "labelArc":
+        elif tag_name == "labelArc":
             if xsd_dic is not None:
                 attr = getAttribs(el)
 
@@ -502,8 +505,6 @@ def ReadLabel(el, xsd_dic, loc_dic, resource_dic):
 
     for child in el:
         ReadLabel(child, xsd_dic, loc_dic, resource_dic)
-
-
 
 def setChildren(inf, ctx: ContextNode):
     if len(ctx.dimensions) != 0:
@@ -569,21 +570,21 @@ def readCalcArcs(xsd_dic, locs, arcs):
 def ReadSchema(inf, is_local, xsd_path, el: ET.Element, xsd_dic: Dict[str, SchemaElement]):
     """スキーマファイルの内容を読む。
     """
-    url, label = splitUrlLabel(el.tag)
+    uri, tag_name = split_uri_name(el.tag)
 
-    if label == 'schema':
+    if tag_name == 'schema':
         target_ns = el.get('targetNamespace')
         target_ns = normUrl(target_ns)
         if is_local:
-            inf.local_xsd_url2path[target_ns] = xsd_path
+            inf.local_xsd_uri2path[target_ns] = xsd_path
             inf.local_xsd_dics[target_ns] = xsd_dic
         else:
             xsd_dics[target_ns] = xsd_dic
 
-    elif label == "element":
+    elif tag_name == "element":
 
         schema = SchemaElement()
-        schema.url = url
+        schema.uri = uri
         schema.name = el.get("name")
         schema.id = el.get("id")
 
@@ -680,37 +681,37 @@ def parseNsUrl(inf, ns_url):
 
     if xsd_path is not None:
         if inf.cur_dir is not None and xsd_path.startswith(inf.cur_dir):
-            if ns_url in inf.local_url2path:
-                assert inf.local_url2path[ns_url] == xsd_path
+            if ns_url in inf.local_uri2path:
+                assert inf.local_uri2path[ns_url] == xsd_path
             else:
-                inf.local_url2path[ns_url] = xsd_path
+                inf.local_uri2path[ns_url] = xsd_path
 
-    elif inf.local_xsd_url2path is not None and ns_url in inf.local_xsd_url2path:
-        assert inf.local_xsd_url2path[ns_url] == xsd_path
+    elif inf.local_xsd_uri2path is not None and ns_url in inf.local_xsd_uri2path:
+        assert inf.local_xsd_uri2path[ns_url] == xsd_path
 
     return xsd_path, label_path
 
 
-def readContext(inf, el: ET.Element, parent_label, ctx: Context):
+def readContext(inf, el: ET.Element, parent_tag_name, ctx: Context):
     """コンテキストの情報を得る。
     """
-    id, url, label, text = parseElement(el)
+    id, uri, tag_name, text = parseElement(el)
 
-    if label == "identifier":
-        assert parent_label == "entity"
+    if tag_name == "identifier":
+        assert parent_tag_name == "entity"
 
-    elif label == "startDate":
-        assert parent_label == "period"
+    elif tag_name == "startDate":
+        assert parent_tag_name == "period"
         ctx.startDate = text
-    elif label == "endDate":
-        assert parent_label == "period"
+    elif tag_name == "endDate":
+        assert parent_tag_name == "period"
         ctx.endDate = text
-    elif label == "instant":
-        assert parent_label == "period"
+    elif tag_name == "instant":
+        assert parent_tag_name == "period"
         ctx.instant = text
 
-    elif label == "explicitMember":
-        assert parent_label == "scenario"
+    elif tag_name == "explicitMember":
+        assert parent_tag_name == "scenario"
 
         dimension = el.get("dimension")
 
@@ -727,11 +728,11 @@ def readContext(inf, el: ET.Element, parent_label, ctx: Context):
         ctx.member_schemas.append(member_schema)
 
     else:
-        assert label in ["context", "entity", "period", "scenario"]
+        assert tag_name in ["context", "entity", "period", "scenario"]
 
     # 再帰的にコンテキストの情報を得る。
     for child in el:
-        readContext(inf, child, label, ctx)
+        readContext(inf, child, tag_name, ctx)
 
 
 def makeContextNode(inf, el, id):
@@ -812,7 +813,7 @@ def makeContextNode(inf, el, id):
 
 
 def make_local_ns_dic(inf, path):
-    """名前空間の接頭辞とURLの辞書を作る。
+    """名前空間の接頭辞とURIの辞書を作る。
     """
     f = open(path)
     for line in f:
@@ -825,35 +826,35 @@ def make_local_ns_dic(inf, path):
                 k1 += 6
 
                 k2 = line.find("=", k1)
-                name = line[k1:k2]
+                prefix = line[k1:k2]
 
                 assert line[k2 + 1] == '"'
                 k3 = line.find('"', k2 + 2)
-                url = line[k2 + 2:k3]
+                uri = line[k2 + 2:k3]
 
-                inf.local_ns_dic[name] = url
+                inf.local_ns_dic[prefix] = uri
 
             break
     f.close()
 
 
-def GetSchemaLabelDic(inf, url) -> Dict[str, SchemaElement]:
-    """指定されたurlのスキーマファイルの辞書を得る。
+def GetSchemaLabelDic(inf, uri) -> Dict[str, SchemaElement]:
+    """指定されたURIのスキーマファイルの辞書を得る。
     辞書がない場合は、スキーマファイルと対応する名称リンクファイルの内容の辞書を作る。
     """
-    url = normUrl(url)
-    xsd_path, label_path = parseNsUrl(inf, url)
+    uri = normUrl(uri)
+    xsd_path, label_path = parseNsUrl(inf, uri)
 
     xsd_dic = None
 
     if xsd_path is not None:
-        if inf.local_xsd_dics is not None and url in inf.local_xsd_dics:
-            xsd_dic = inf.local_xsd_dics[url]
+        if inf.local_xsd_dics is not None and uri in inf.local_xsd_dics:
+            xsd_dic = inf.local_xsd_dics[uri]
 
         else:
 
-            if url in xsd_dics:
-                xsd_dic = xsd_dics[url]
+            if uri in xsd_dics:
+                xsd_dic = xsd_dics[uri]
 
             else:
                 assert os.path.exists(xsd_path)
@@ -864,7 +865,7 @@ def GetSchemaLabelDic(inf, url) -> Dict[str, SchemaElement]:
 
                 # スキーマファイルの内容を読む。
                 ReadSchema(inf, False, xsd_path, xsd_root, xsd_dic)
-                assert xsd_dics[url] == xsd_dic
+                assert xsd_dics[uri] == xsd_dic
 
     if label_path is not None:
         if label_path.startswith(inf.cur_dir):
@@ -891,11 +892,11 @@ def GetSchemaLabelDic(inf, url) -> Dict[str, SchemaElement]:
     return xsd_dic
 
 
-def getSchemaElement(inf, url, label) -> SchemaElement:
-    xsd_dic = GetSchemaLabelDic(inf, url)
+def getSchemaElement(inf, uri, tag_name) -> SchemaElement:
+    xsd_dic = GetSchemaLabelDic(inf, uri)
 
-    assert xsd_dic is not None and label in xsd_dic
-    ele = xsd_dic[label]
+    assert xsd_dic is not None and tag_name in xsd_dic
+    ele = xsd_dic[tag_name]
 
     return ele
 
@@ -903,20 +904,20 @@ def getSchemaElement(inf, url, label) -> SchemaElement:
 def read_xbrl(inf, el: ET.Element):
     """XBRLファイルの内容を読む。
     """
-    id, url, label, text = parseElement(el)
+    id, uri, tag_name, text = parseElement(el)
 
-    if url == "http://www.xbrl.org/2003/instance" and label == "context":
+    if uri == "http://www.xbrl.org/2003/instance" and tag_name == "context":
 
         # Contextに対応するContextNodeを作る。
         makeContextNode(inf, el, id)
         return
 
-    # if url in [ "http://www.xbrl.org/2003/instance", "http://www.xbrl.org/2003/linkbase" ]:
-    if url in ["http://www.xbrl.org/2003/linkbase"]:
+    # if uri in [ "http://www.xbrl.org/2003/instance", "http://www.xbrl.org/2003/linkbase" ]:
+    if uri in ["http://www.xbrl.org/2003/linkbase"]:
         pass
     else:
 
-        ele : SchemaElement = getSchemaElement(inf, url, label)
+        ele : SchemaElement = getSchemaElement(inf, uri, tag_name)
 
         assert el.tag[0] == '{'
 
@@ -948,26 +949,25 @@ def read_xbrl(inf, el: ET.Element):
 def readCalcSub(inf, el, xsd_dic, locs, arcs):
     """計算リンクファイルの内容を読む。
     """
-    url, label = splitUrlLabel(el.tag)
+    uri, tag_name = split_uri_name(el.tag)
 
-    if label == 'calculationLink':
+    if tag_name == 'calculationLink':
         attr = getAttribs(el)
         for el2 in el:
-            url2, label2 = splitUrlLabel(el2.tag)
-            if label2 in ['loc', 'calculationArc']:
-                if label2 == 'loc':
-                    attr2 = getAttribs(el2)
-                    v = attr2['href'].split('#')
-                    if v[0].startswith('http://'):
-                        xsd_dic2 = GetSchemaLabelDic(inf, v[0])
+            uri2, tag_name2 = split_uri_name(el2.tag)
+            if tag_name2 == 'loc':
+                attr2 = getAttribs(el2)
+                v = attr2['href'].split('#')
+                if v[0].startswith('http://'):
+                    xsd_dic2 = GetSchemaLabelDic(inf, v[0])
 
-                    else:
-                        xsd_dic2 = xsd_dic
-                    assert v[1] in xsd_dic2
-                    locs[attr2['label']] = xsd_dic2[v[1]]
+                else:
+                    xsd_dic2 = xsd_dic
+                assert v[1] in xsd_dic2
+                locs[attr2['label']] = xsd_dic2[v[1]]
 
-                elif label2 == 'calculationArc':
-                    arcs.append(el2)
+            elif tag_name2 == 'calculationArc':
+                arcs.append(el2)
 
     else:
         # 再帰的に計算リンクファイルの内容を読む。
@@ -1038,8 +1038,8 @@ def read_public_doc(inf, category_name, public_doc, reports):
 
     inf.local_ns_dic = {}
     inf.local_xsd_dics = {}
-    inf.local_url2path = {}
-    inf.local_xsd_url2path = {}
+    inf.local_uri2path = {}
+    inf.local_xsd_uri2path = {}
 
     label_cnt = 0
 
@@ -1079,7 +1079,7 @@ def read_public_doc(inf, category_name, public_doc, reports):
     local_label_path_list = list(Path(inf.cur_dir).glob("*_lab.xml"))
     assert len(local_label_path_list) == label_cnt
 
-    # 名前空間の接頭辞とURLの辞書を作る。
+    # 名前空間の接頭辞とURIの辞書を作る。
     make_local_ns_dic(inf, xbrl_path)
 
     # XBRLファイルの内容を読む。
@@ -1299,7 +1299,7 @@ inf = Inf()
 # 計算リンクファイルを読む。
 readCalc(inf)
 
-# 指定されたurlのスキーマファイルと対応する名称リンクファイルの内容の辞書を作る。
+# 指定されたURIのスキーマファイルと対応する名称リンクファイルの内容の辞書を作る。
 GetSchemaLabelDic(inf, "http://www.xbrl.org/2003/instance")
 
 if __name__ == '__main__':
