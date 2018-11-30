@@ -153,15 +153,16 @@ class XbrlNode:
 
         if schema is not None:
             name, label, verbose_label = self.schema.getLabel()
-            self.name = name
-            self.label = label
+
+            self.name          = name
+            self.label         = label
             self.verbose_label = verbose_label
 
     def copy_name_label(self, union):
         """nameとlabelをコピーする。
         """
-        union['name'] = self.name
-        union['label'] = self.label
+        union['name']          = self.name
+        union['label']         = self.label
         union['verbose_label'] = self.verbose_label
 
 
@@ -331,9 +332,9 @@ class Calc:
     """
 
     def __init__(self, to_el, role, order, weight):
-        self.to = to_el
-        self.role = role
-        self.order = order
+        self.to     = to_el
+        self.role   = role
+        self.order  = order
         self.weight = weight
 
 class Report:
@@ -342,10 +343,10 @@ class Report:
     __slots__ = [ 'end_date', 'num_submission', 'ctx_objs', 'htm_paths' ]
 
     def __init__(self, end_date, num_submission, ctx_objs, htm_paths):
-        self.end_date = end_date
+        self.end_date       = end_date
         self.num_submission = num_submission
-        self.ctx_objs = ctx_objs
-        self.htm_paths = htm_paths
+        self.ctx_objs       = ctx_objs
+        self.htm_paths      = htm_paths
 
 class Inf:
     __slots__ = ['cpu_count', 'cpu_id', 'cur_dir', 'local_node_dic', 'local_top_context_nodes', 'local_ns_dic',
@@ -417,7 +418,9 @@ def parseElement(el: ET.Element):
     return id, uri, tag_name, el.text
 
 
-def normUrl(uri):
+def norm_uri(uri):
+    """スキーマのURIを正規化する。
+    """
     if not uri.endswith('.xsd') and uri.startswith('http://disclosure.edinet-fsa.go.jp/taxonomy/'):
         v = uri.split('/')
 
@@ -445,17 +448,17 @@ def normUrl(uri):
 
 
 def getSchemaElementNsName(inf, text) -> SchemaElement:
-    v = text.split(':')
+    # 名前空間の接頭辞と要素名に分離する。
     prefix, tag_name = text.split(':')
-    assert prefix == v[0] and tag_name == v[1]
 
-    assert v[0] in inf.local_ns_dic
-    ns_url = inf.local_ns_dic[v[0]]
-    name = v[1]
+    # 名前空間の接頭辞をURIに変換する。
+    assert prefix in inf.local_ns_dic
+    ns_uri = inf.local_ns_dic[prefix]
 
-    ele = getSchemaElement(inf, ns_url, name)
+    # 指定されたURIと名前からスキーマ要素を得る。
+    schema = get_schema_element(inf, ns_uri, tag_name)
 
-    return ele
+    return schema
 
 
 def ReadLabel(el, xsd_dic, loc_dic, resource_dic):
@@ -574,7 +577,9 @@ def ReadSchema(inf, is_local, xsd_path, el: ET.Element, xsd_dic: Dict[str, Schem
 
     if tag_name == 'schema':
         target_ns = el.get('targetNamespace')
-        target_ns = normUrl(target_ns)
+
+        # スキーマのURIを正規化する。
+        target_ns = norm_uri(target_ns)
         if is_local:
             inf.local_xsd_uri2path[target_ns] = xsd_path
             inf.local_xsd_dics[target_ns] = xsd_dic
@@ -603,57 +608,59 @@ def ReadSchema(inf, is_local, xsd_path, el: ET.Element, xsd_dic: Dict[str, Schem
         ReadSchema(inf, is_local, xsd_path, child, xsd_dic)
 
 
-def parseNsUrl(inf, ns_url):
-    if ns_url.startswith("http://disclosure.edinet-fsa.go.jp/taxonomy/"):
+def get_schema_label_path(inf, ns_uri):
+    """指定されたURIのスキーマファイルと名称リンクファイルのパスを得る。
+    """
+    if ns_uri.startswith("http://disclosure.edinet-fsa.go.jp/taxonomy/"):
         # http://disclosure.edinet-fsa.go.jp/taxonomy/jpcrp/2017-02-28/jpcrp_cor
 
-        v2 = ns_url.split('/')
+        v2 = ns_uri.split('/')
         name_space = v2[4]
         yymmdd = v2[5]
         name_cor = v2[6]
 
         # '/2013-08-31/タクソノミ/taxonomy/jpdei/2013-08-31/jpdei_cor_2013-08-31.xsd'
 
-        if ns_url.endswith('.xsd'):
-            file_name = os.path.basename(ns_url)
+        if ns_uri.endswith('.xsd'):
+            file_name = os.path.basename(ns_uri)
         else:
             file_name = name_cor + "_" + yymmdd + '.xsd'
         xsd_path = (taxonomy_tmpl % yymmdd) + name_space + '/' + yymmdd + '/' + file_name
         label_path = (
                              taxonomy_tmpl % yymmdd) + name_space + '/' + yymmdd + '/label/' + name_space + "_" + yymmdd + '_lab.xml'
 
-    elif ns_url.startswith("http://disclosure.edinet-fsa.go.jp/"):
+    elif ns_uri.startswith("http://disclosure.edinet-fsa.go.jp/"):
         # http://disclosure.edinet-fsa.go.jp/ifrs/q2r/001/E00949-000/2016-09-30/01/2016-11-04
         # http://disclosure.edinet-fsa.go.jp/jpcrp040300/q2r/001/E00949-000/2016-09-30/01/2016-11-04
         # jpcrp040300-q2r-001_E31382-000_2015-07-31_01_2015-09-14.xsd
 
-        v = ns_url[len("http://disclosure.edinet-fsa.go.jp/"):].split('/')
+        v = ns_uri[len("http://disclosure.edinet-fsa.go.jp/"):].split('/')
         name = '-'.join(v[:3]) + '_' + '_'.join(v[3:])
 
         base_path = "%s/%s" % (inf.cur_dir, name)
         xsd_path = base_path + '.xsd'
         label_path = base_path + '_lab.xml'
 
-    elif ns_url.startswith("http://xbrl.ifrs.org/taxonomy/"):
-        if ns_url == 'http://xbrl.ifrs.org/taxonomy/2015-03-11/full_ifrs/full_ifrs-cor_2015-03-11.xsd':
-            ns_url = 'http://xbrl.ifrs.org/taxonomy/2015-03-11/ifrs-full'
-        elif ns_url == 'http://xbrl.ifrs.org/taxonomy/2014-03-05/full_ifrs/full_ifrs-cor_2014-03-05.xsd':
-            ns_url = 'http://xbrl.ifrs.org/taxonomy/2014-03-05/ifrs-full'
+    elif ns_uri.startswith("http://xbrl.ifrs.org/taxonomy/"):
+        if ns_uri == 'http://xbrl.ifrs.org/taxonomy/2015-03-11/full_ifrs/full_ifrs-cor_2015-03-11.xsd':
+            ns_uri = 'http://xbrl.ifrs.org/taxonomy/2015-03-11/ifrs-full'
+        elif ns_uri == 'http://xbrl.ifrs.org/taxonomy/2014-03-05/full_ifrs/full_ifrs-cor_2014-03-05.xsd':
+            ns_uri = 'http://xbrl.ifrs.org/taxonomy/2014-03-05/ifrs-full'
 
-        if not ns_url in [
+        if not ns_uri in [
             'http://xbrl.ifrs.org/taxonomy/2015-03-11/ifrs-full',
             'http://xbrl.ifrs.org/taxonomy/2014-03-05/ifrs-full'
         ]:
-            print(ns_url)
+            print(ns_uri)
 
-        assert ns_url in [
+        assert ns_uri in [
             'http://xbrl.ifrs.org/taxonomy/2015-03-11/ifrs-full',
             'http://xbrl.ifrs.org/taxonomy/2014-03-05/ifrs-full'
         ]
 
         ifrs_path = root_dir + "/data/IFRS/IFRST_%s/full_ifrs/full_ifrs-cor_%s.xsd"
 
-        v = ns_url.split('/')
+        v = ns_uri.split('/')
         yyyymmdd = v[4]
 
         xsd_path = ifrs_path % (yyyymmdd, yyyymmdd)
@@ -670,24 +677,24 @@ def parseNsUrl(inf, ns_url):
         else:
             assert False
 
-    elif ns_url == "http://www.xbrl.org/2003/instance":
+    elif ns_uri == "http://www.xbrl.org/2003/instance":
         xsd_path = root_dir + "/data/IFRS/xbrl-instance-2003-12-31.xsd"
         label_path = None
 
     else:
-        assert ns_url in ["http://www.xbrl.org/2003/instance", "http://www.xbrl.org/2003/linkbase"]
+        assert ns_uri in ["http://www.xbrl.org/2003/instance", "http://www.xbrl.org/2003/linkbase"]
 
         return None, None
 
     if xsd_path is not None:
         if inf.cur_dir is not None and xsd_path.startswith(inf.cur_dir):
-            if ns_url in inf.local_uri2path:
-                assert inf.local_uri2path[ns_url] == xsd_path
+            if ns_uri in inf.local_uri2path:
+                assert inf.local_uri2path[ns_uri] == xsd_path
             else:
-                inf.local_uri2path[ns_url] = xsd_path
+                inf.local_uri2path[ns_uri] = xsd_path
 
-    elif inf.local_xsd_uri2path is not None and ns_url in inf.local_xsd_uri2path:
-        assert inf.local_xsd_uri2path[ns_url] == xsd_path
+    elif inf.local_xsd_uri2path is not None and ns_uri in inf.local_xsd_uri2path:
+        assert inf.local_xsd_uri2path[ns_uri] == xsd_path
 
     return xsd_path, label_path
 
@@ -838,12 +845,16 @@ def make_local_ns_dic(inf, path):
     f.close()
 
 
-def GetSchemaLabelDic(inf, uri) -> Dict[str, SchemaElement]:
+def get_schema_dic(inf, uri) -> Dict[str, SchemaElement]:
     """指定されたURIのスキーマファイルの辞書を得る。
     辞書がない場合は、スキーマファイルと対応する名称リンクファイルの内容の辞書を作る。
     """
-    uri = normUrl(uri)
-    xsd_path, label_path = parseNsUrl(inf, uri)
+
+    # スキーマのURIを正規化する。
+    uri = norm_uri(uri)
+
+    # 指定されたURIのスキーマファイルと名称リンクファイルのパスを得る。
+    xsd_path, label_path = get_schema_label_path(inf, uri)
 
     xsd_dic = None
 
@@ -892,13 +903,18 @@ def GetSchemaLabelDic(inf, uri) -> Dict[str, SchemaElement]:
     return xsd_dic
 
 
-def getSchemaElement(inf, uri, tag_name) -> SchemaElement:
-    xsd_dic = GetSchemaLabelDic(inf, uri)
+def get_schema_element(inf, uri, tag_name) -> SchemaElement:
+    """指定されたURIと名前からスキーマ要素を得る。
+    """
+    
+    # 指定されたURIのスキーマファイルの辞書を得る。
+    xsd_dic = get_schema_dic(inf, uri)
 
+    # 辞書と名前からスキーマ要素を得る。
     assert xsd_dic is not None and tag_name in xsd_dic
-    ele = xsd_dic[tag_name]
+    schema = xsd_dic[tag_name]
 
-    return ele
+    return schema
 
 
 def read_xbrl(inf, el: ET.Element):
@@ -917,26 +933,27 @@ def read_xbrl(inf, el: ET.Element):
         pass
     else:
 
-        ele : SchemaElement = getSchemaElement(inf, uri, tag_name)
+        # 指定されたURIと名前からスキーマ要素を得る。
+        schema : SchemaElement = get_schema_element(inf, uri, tag_name)
 
         assert el.tag[0] == '{'
 
         context_ref = el.get("contextRef")
         # assert context_ref is not None
-        if ele.type is None or context_ref is None:
-            pass
-        else:
+        if schema.type is not None and context_ref is not None:
+
+            # コンテスト参照からノードを得る。
             assert context_ref in inf.local_node_dic
             node = inf.local_node_dic[context_ref]
 
-            # XBRLインスタンスの中の開示情報の項目
-            item = Item(node, ele, text)
+            # XBRLインスタンスの中の開示情報の項目を作る。
+            item = Item(node, schema, text)
 
             # ノードの値に項目を追加する。
             node.values.append(item)
 
-            if ele.type == "金額":
-                name, label, verbose_label = ele.getLabel()
+            if schema.type == "金額":
+                name, label, verbose_label = schema.getLabel()
                 if label == '原材料及び貯蔵品':
                     inf.logf.write('dmp :%s %s %s\n' % (label, text, period_names[node.period]))
                     inc_key_cnt(dmp_cnt, node.period)
@@ -959,7 +976,9 @@ def readCalcSub(inf, el, xsd_dic, locs, arcs):
                 attr2 = getAttribs(el2)
                 v = attr2['href'].split('#')
                 if v[0].startswith('http://'):
-                    xsd_dic2 = GetSchemaLabelDic(inf, v[0])
+
+                    # 指定されたURIのスキーマファイルの辞書を得る。
+                    xsd_dic2 = get_schema_dic(inf, v[0])
 
                 else:
                     xsd_dic2 = xsd_dic
@@ -1300,7 +1319,7 @@ inf = Inf()
 readCalc(inf)
 
 # 指定されたURIのスキーマファイルと対応する名称リンクファイルの内容の辞書を作る。
-GetSchemaLabelDic(inf, "http://www.xbrl.org/2003/instance")
+get_schema_dic(inf, "http://www.xbrl.org/2003/instance")
 
 if __name__ == '__main__':
     cpu_count = 1
