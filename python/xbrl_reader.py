@@ -11,6 +11,26 @@ import time
 from typing import Dict, List, Any
 from operator import itemgetter
 from multiprocessing import Array
+import csv
+
+def read_lines(file_name:str, encoding='utf-8'):
+    f = codecs.open(file_name, 'r', encoding, errors='replace')
+    lines = [ x.strip() for x in f.readlines() ]
+    f.close()
+
+    return lines
+
+def read_csv_file(file_name:str, encoding='utf-8'):
+    with codecs.open(file_name, 'r', encoding, errors='replace') as f:
+        reader = csv.reader(f)
+
+        lines = [ x for x in reader ]
+        # header = next(reader)  # ヘッダーを読み飛ばしたい時
+
+        # for row in reader:
+        #     print row          # 1行づつ取得できる
+
+    return lines
 
 
 def find(search_iteration):
@@ -37,6 +57,50 @@ def log_dict_cnt(inf, name, dic: dict):
     for k, v in dic.items():
         inf.logf.write('%s %s %d\n' % (name, period_names[k], v))
 
+category_name_dic = {
+    '金属製品' : 'metal',
+    '鉱業' : 'mining',
+    '鉄鋼' : 'steel',
+    'ゴム製品' : 'rubber',
+    '非鉄金属' : 'nonferrous_metal',
+    '保険業' : 'insurance',
+    '電気機器' : 'electronics',
+    '倉庫・運輸関連' : 'warehouse_transport',
+    'ガラス・土石製品' : 'glass_soil_stone',
+    '繊維製品' : 'textile',
+    'その他金融業' : 'finance',
+    '石油・石炭製品' : 'petroleum_coal',
+    '電気・ガス業' : 'electric_power_gas',
+    'パルプ・紙' : 'pulp_paper',
+    '小売業' : 'retail',
+    '輸送用機器' : 'transport_equipment',
+    '機械' : 'machinery',
+    '証券、商品先物取引業' : 'brokerage',
+    '医薬品' : 'pharmaceutical',
+    '化学' : 'chemistry',
+    '精密機器' : 'precision_instrument',
+    '陸運業' : 'land_transport',
+    '海運業' : 'marine_transport',
+    '空運業' : 'air_transport',
+    '不動産業' : 'real_estate',
+    '食料品' : 'food',
+    '銀行業' : 'bank',
+    '卸売業' : 'wholesale',
+    'その他製品' : 'other_product',
+    '水産・農林業' : 'fishing_agriculture',
+    'サービス業' : 'service',
+    '建設業' : 'construction',
+    '情報・通信業' : 'information_communication',
+    '外国政府等' : 'foreign_government',
+    '外国法人・組合' : 'foreign_corporation',
+    '外国法人・組合（有価証券報告書等の提出義務者以外）' : 'other_foreign_corporation',
+    '内国法人・組合（有価証券報告書等の提出義務者以外）' : 'domestic_corporation',
+    '個人（組合発行者を除く）' : 'private_person',
+    '個人（非居住者）（組合発行者を除く）' : 'private_person_non_resident',
+}
+
+# for k,v in category_name_dic.items():
+#     print("'%s' : '%s'," % (v,k))
 
 label_role = "http://www.xbrl.org/2003/role/label"
 verboseLabel_role = "http://www.xbrl.org/2003/role/verboseLabel"
@@ -378,6 +442,16 @@ dmp_cnt: Dict[str, int] = {}
 ctx_cnt: Dict[str, int] = {}
 join_cnt: Dict[str, int] = {}
 
+def read_company_dic():
+
+    lines = read_csv_file(root_dir + '/data/EDINET/EdinetcodeDlInfo.csv', 'shift_jis')
+
+    # 最初の2行の見出しは取り除く。
+    lines = lines[2:]
+
+    company_dic = dict( (x[0], { 'company_name':x[6], 'category_name': category_name_dic[x[10]] } ) for x in lines if 11 <= len(x) )
+
+    return company_dic
 
 def split_uri_name(text):
     """テキストをURI部分と名前部分に分割する。
@@ -1139,73 +1213,72 @@ def read_public_doc(inf, category_name, public_doc, reports):
         reports.append(report)
 
 
-def make_public_docs_list(cpu_count):
-    # カテゴリー別のEDINETコードのリスト
-    category_edinet_codes = []
+def make_public_docs_list(cpu_count, company_dic):
+    # カテゴリー別の会社リスト
+    category_companies = []
 
-    # カテゴリー・EDINETコード別のXBRLフォルダーの辞書を各CPUごとに作る。
+    # EDINETコード別のXBRLフォルダーの辞書を各CPUごとに作る。
     public_docs_list = [{} for i in range(cpu_count)]
 
-    # 各カテゴリー別のフォルダーに対し
-    for category_dir in Path(report_path).glob("*"):
-        category_name = os.path.basename(str(category_dir))
+    # カテゴリー内の'XBRL/PublicDoc'のフォルダーに対し
+    for public_doc in Path(report_path).glob("**/XBRL/PublicDoc"):
 
-        # カテゴリー内のEDINETコードのリスト
-        edinet_codes = []
+        # jpcrpのxbrlファイルを得る。( ifrsのxbrlファイルは使わない。 )
+        xbrl_path_list = list(public_doc.glob('jpcrp*.xbrl'))
+        assert len(xbrl_path_list) == 1
 
-        # カテゴリー別のEDINETコードのリストに追加する。
-        category_edinet_codes.append({'category_name': category_name, 'edinet_codes': edinet_codes})
+        xbrl_path_0 = xbrl_path_list[0]
 
-        # カテゴリー内の'XBRL/PublicDoc'のフォルダーに対し
-        for public_doc in category_dir.glob("*/*/XBRL/PublicDoc"):
-            # jpcrpのxbrlファイルを得る。( ifrsのxbrlファイルは使わない。 )
-            xbrl_path_list = list(public_doc.glob('jpcrp*.xbrl'))
-            assert len(xbrl_path_list) == 1
+        # パスの中のファイル名を得る。
+        # 'jpcrp040300-q2r-001_E03739-000_2017-09-30_01_2017-11-14.xbrl'
+        xbrl_path_0_basename = os.path.basename(str(xbrl_path_0))
 
-            xbrl_path_0 = xbrl_path_list[0]
+        # ファイル名を'-'と'_'で区切る。
+        items = re.split('[-_]', xbrl_path_0_basename)
 
-            # パスの中のファイル名を得る。
-            # 'jpcrp040300-q2r-001_E03739-000_2017-09-30_01_2017-11-14.xbrl'
-            xbrl_path_0_basename = os.path.basename(str(xbrl_path_0))
+        # EDINETコードを得る。
+        edinet_code = items[3]
 
-            # ファイル名を'-'と'_'で区切る。
-            items = re.split('[-_]', xbrl_path_0_basename)
+        # EDINETコードの各文字のUNICODEの合計値
+        char_sum = sum(ord(x) for x in edinet_code)
 
-            # EDINETコードを得る。
-            edinet_code = items[3]
+        # このEDINETコードのXBRLを処理するCPUのインデックスを決める。
+        cpu_idx = char_sum % cpu_count
 
-            # EDINETコードの各文字のUNICODEの合計値
-            char_sum = sum(ord(x) for x in edinet_code)
+        # このCPUのカテゴリー別・EDINETコード別のXBRLフォルダーの辞書
+        edinet_code_dic = public_docs_list[cpu_idx]
+        
+        if edinet_code in edinet_code_dic:
+            # このEDINETコードがすでに辞書にある場合
 
-            # このEDINETコードのXBRLを処理するCPUのインデックスを決める。
-            cpu_idx = char_sum % cpu_count
+            edinet_code_dic[edinet_code].append(public_doc)
+        else:
+            # このEDINETコードが辞書にない場合
 
-            # このCPUのカテゴリー別・EDINETコード別のXBRLフォルダーの辞書
-            dic = public_docs_list[cpu_idx]
-            
-            if category_name in dic:
-                # このカテゴリーがすでに辞書にある場合
+            edinet_code_dic[edinet_code] = [ public_doc ]
 
-                # EDINETコードの辞書
-                edinet_code_dic = dic[category_name]
-                if edinet_code in edinet_code_dic:
-                    # このEDINETコードがすでに辞書にある場合
 
-                    edinet_code_dic[edinet_code].append(public_doc)
-                else:
-                    # このEDINETコードが辞書にない場合
+        # カテゴリー名
+        company = company_dic[edinet_code]
+        category_name = company['category_name']
+        company_obj = { 'edinet_code': edinet_code, 'company_name': company['company_name'] } 
 
-                    edinet_code_dic[edinet_code] = [ public_doc ]
+        category = find(x for x in category_companies if x['category_name'] == category_name)
+        if category is None:
 
-            else:
-                # このカテゴリーがすでに辞書にない場合
+            # カテゴリー別の会社のリストに追加する。
+            category_companies.append({ 'category_name': category_name, 'companies': [ company_obj ] })
 
-                dic[category_name] = { edinet_code: [public_doc] }
+        else:
 
-            if not edinet_code in edinet_codes:
-                # カテゴリー内のEDINETコードのリストにない場合
+            # カテゴリー内の会社リスト
+            companies = category['companies']
 
-                edinet_codes.append(edinet_code)
+            if not any(x for x in companies if x['edinet_code'] == edinet_code):
+                # カテゴリー内の会社リストにない場合
+
+                companies.append( company_obj )
+
 
     # JSONを入れるフォルダー
     json_dir = root_dir + "/web/json"
@@ -1214,18 +1287,18 @@ def make_public_docs_list(cpu_count):
 
         os.makedirs(json_dir)
 
-    # カテゴリー別のEDINETコードのリストのJSONのパス
-    json_path = json_dir + '/category_edinet_codes.json'
+    # カテゴリー別の会社リストのJSONのパス
+    json_path = json_dir + '/category_companies.json'
 
     # JSONをファイルに書く。
     with codecs.open(json_path, 'w', 'utf-8') as json_f:
-        json.dump(category_edinet_codes, json_f, ensure_ascii=False)
+        json.dump(category_companies, json_f, ensure_ascii=False)
 
-    # 各CPUごとの、カテゴリー・EDINETコード別のXBRLフォルダーの辞書を返す。
+    # 各CPUごとの、EDINETコード別のXBRLフォルダーの辞書を返す。
     return public_docs_list
 
 
-def readXbrlThread(cpu_count, cpu_id, category_name_dic, progress):
+def readXbrlThread(cpu_count, cpu_id, edinet_code_dic, progress, company_dic):
     """スレッドのメイン処理
     """
 
@@ -1236,8 +1309,11 @@ def readXbrlThread(cpu_count, cpu_id, category_name_dic, progress):
     inf.progress = progress
     inf.logf = open('%s/data/log-%d.txt' % (root_dir, cpu_id), 'w', encoding='utf-8')
 
-    # 各カテゴリー名に対し
-    for category_name in category_name_dic.keys():
+    # EDINETコードとXBRLフォルダーのリストに対し
+    for edinet_code, public_docs in edinet_code_dic.items():
+
+        category_name = company_dic[edinet_code]['category_name']
+
         # JSONを入れるフォルダー
         json_dir = "%s/web/json/%s" % (root_dir, category_name)
 
@@ -1245,69 +1321,64 @@ def readXbrlThread(cpu_count, cpu_id, category_name_dic, progress):
             # フォルダーがなければ作る。
             os.makedirs(json_dir)
 
-        # EDINETコードの辞書
-        edinet_code_dic = category_name_dic[category_name]
+        dmp_cnt.clear()
+        ctx_cnt.clear()
+        join_cnt.clear()
 
-        # EDINETコードとXBRLフォルダーのリストに対し
-        for edinet_code, public_docs in edinet_code_dic.items():
-            dmp_cnt.clear()
-            ctx_cnt.clear()
-            join_cnt.clear()
+        reports = []
 
-            reports = []
+        # 各XBRLフォルダーに対し
+        for public_doc in public_docs:
+            
+            # XBRLフォルダー内のファイルを読む。
+            read_public_doc(inf, category_name, public_doc, reports)
 
-            # 各XBRLフォルダーに対し
-            for public_doc in public_docs:
-                
-                # XBRLフォルダー内のファイルを読む。
-                read_public_doc(inf, category_name, public_doc, reports)
+        # 当会計期間終了日でソートする。
+        reports = sorted(reports, key=lambda x: x.end_date)
 
-            # 当会計期間終了日でソートする。
-            reports = sorted(reports, key=lambda x: x.end_date)
+        # 当会計期間終了日とでソートする。
+        end_date_objs_dic = {}
+        for report in reports:
 
-            # 当会計期間終了日とでソートする。
-            end_date_objs_dic = {}
-            for report in reports:
+            # 各期間のデータに対し
+            for obj in report.ctx_objs:
 
-                # 各期間のデータに対し
-                for obj in report.ctx_objs:
+                if obj.period in end_date_objs_dic:
+                    end_date_objs_dic[obj.period].append((report.end_date, obj))
+                else:
+                    end_date_objs_dic[obj.period] = [(report.end_date, obj)]
 
-                    if obj.period in end_date_objs_dic:
-                        end_date_objs_dic[obj.period].append((report.end_date, obj))
-                    else:
-                        end_date_objs_dic[obj.period] = [(report.end_date, obj)]
+        # 期間別にXBRLデータを結合する。
+        xbrl_union = []
+        for period, end_date_objs in end_date_objs_dic.items():
+            inf.period = period
+            union = {}
+            end_dates = []
+            for idx, (end_date, obj) in enumerate(end_date_objs):
+                end_dates.append(end_date)
+                obj.join_ctx(inf, union, len(end_date_objs), idx)
 
-            # 期間別にXBRLデータを結合する。
-            xbrl_union = []
-            for period, end_date_objs in end_date_objs_dic.items():
-                inf.period = period
-                union = {}
-                end_dates = []
-                for idx, (end_date, obj) in enumerate(end_date_objs):
-                    end_dates.append(end_date)
-                    obj.join_ctx(inf, union, len(end_date_objs), idx)
+            xbrl_union.append((period, end_dates, union))
 
-                xbrl_union.append((period, end_dates, union))
+        # period_names_orderの期間名の順に並べ替える。
+        xbrl_union = sorted(xbrl_union, key=lambda x: period_names_order.index(x[0]))
 
-            # period_names_orderの期間名の順に並べ替える。
-            xbrl_union = sorted(xbrl_union, key=lambda x: period_names_order.index(x[0]))
+        reports_json = [ { 'end_date':x.end_date, 'htm_paths':x.htm_paths } for x in reports ]
 
-            reports_json = [ { 'end_date':x.end_date, 'htm_paths':x.htm_paths } for x in reports ]
+        # JSONデータを作る。
+        json_data = { 'reports': reports_json, 'xbrl_union': xbrl_union }
 
-            # JSONデータを作る。
-            json_data = { 'reports': reports_json, 'xbrl_union': xbrl_union }
+        # JSONデータをファイルに書く。
+        with codecs.open('%s/%s.json' % (json_dir, edinet_code), 'w', 'utf-8') as f:
+            json.dump(json_data, f, ensure_ascii=False)
 
-            # JSONデータをファイルに書く。
-            with codecs.open('%s/%s.json' % (json_dir, edinet_code), 'w', 'utf-8') as f:
-                json.dump(json_data, f, ensure_ascii=False)
+        log_dict_cnt(inf, 'dmp ', dmp_cnt)
+        log_dict_cnt(inf, 'ctx ', ctx_cnt)
+        log_dict_cnt(inf, 'join', join_cnt)
 
-            log_dict_cnt(inf, 'dmp ', dmp_cnt)
-            log_dict_cnt(inf, 'ctx ', ctx_cnt)
-            log_dict_cnt(inf, 'join', join_cnt)
-
-            assert len(dmp_cnt) == len(ctx_cnt) and len(dmp_cnt) == len(join_cnt)
-            for k, v in dmp_cnt.items():
-                assert ctx_cnt[k] == v and join_cnt[k] == v
+        assert len(dmp_cnt) == len(ctx_cnt) and len(dmp_cnt) == len(join_cnt)
+        for k, v in dmp_cnt.items():
+            assert ctx_cnt[k] == v and join_cnt[k] == v
 
     inf.logf.close()
     print('CPU:%d 終了:%d' % (cpu_id, int(time.time() - start_time)))
@@ -1322,10 +1393,12 @@ readCalc(inf)
 get_schema_dic(inf, "http://www.xbrl.org/2003/instance")
 
 if __name__ == '__main__':
+    company_dic = read_company_dic()
+    
     cpu_count = 1
     cpu_id = 0
 
     progress = Array('i', [0] * cpu_count)
-    public_docs_list = make_public_docs_list(cpu_count)
+    public_docs_list = make_public_docs_list(cpu_count, company_dic)
 
-    readXbrlThread(cpu_count, cpu_id, public_docs_list[cpu_id], progress)
+    readXbrlThread(cpu_count, cpu_id, public_docs_list[cpu_id], progress, company_dic)

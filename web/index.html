@@ -10,7 +10,7 @@
 
 <script type="text/javascript">
 var category_select;
-var category_edinet_codes;
+var category_companies;
 var edinet_codes_select;
 var selectedCategory = null;
 
@@ -267,7 +267,7 @@ function on_load(){
     category_select = document.getElementById('category');
     edinet_codes_select = document.getElementById('edinet_codes');
 
-    json_path = 'json/category_edinet_codes.json'
+    json_path = 'json/category_companies.json'
     $.ajax({ // json読み込み開始
         type: 'GET',
         url: json_path,
@@ -336,13 +336,13 @@ function category_changed(){
 
     selectedCategory = category_edinet_codes[idx];
 
-    for(var edinet_code of selectedCategory['edinet_codes']){
+    for(var company of selectedCategory['companies']){
             // option要素の宣言
             var option = document.createElement('option');
             // option要素のvalue属性に値をセット
             // option.setAttribute('value', category['category_name']);
             // option要素に値をセット
-            option.innerHTML = edinet_code;
+            option.innerHTML = company['company_name'];
             // 作成したoption要素をselectタグに追加
             edinet_codes_select.appendChild(option);
     }
@@ -356,9 +356,9 @@ function edinet_codes_changed(){
     }
 
     category_name = selectedCategory['category_name']
-    edinet_code = selectedCategory['edinet_codes'][idx];
+    company = selectedCategory['companies'][idx];
 
-    readXbrl(category_name, edinet_code);
+    readXbrl(category_name, company['edinet_code']);
 }
 
 function drawChart(){
