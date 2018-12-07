@@ -1,2 +1,7 @@
 data/
 docs/_build/
+web/doc/
+web/json/
+web/report/
+python/__pycache__/
+web/work/

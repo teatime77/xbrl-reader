@@ -429,7 +429,7 @@ prev_cnt: int = 0
 root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__))).replace('\\', '/')
 report_path = root_dir + '/web/report'
 
-taxonomy_tmpl = root_dir + '/data/EDINET/taxonomy/%s/タクソノミ/taxonomy/'
+taxonomy_tmpl = root_dir + '/data/EDINET/taxonomy/%s/taxonomy/'
 
 xbrl_idx = 0
 xbrl_basename = None
@@ -441,6 +441,13 @@ label_dics: Dict[str, bool] = {}
 dmp_cnt: Dict[str, int] = {}
 ctx_cnt: Dict[str, int] = {}
 join_cnt: Dict[str, int] = {}
+
+def check_taxonomy():
+    for date in [ '2013-08-31', '2014-03-31', '2015-03-31', '2016-02-29', '2017-02-28', '2018-02-28' ]:
+        xsd_path = '%s/data/EDINET/taxonomy/%s/taxonomy/jppfs/%s/jppfs_cor_%s.xsd' % (root_dir, date, date, date)
+        if not os.path.exists(xsd_path):
+            print('タクソノミがありません。\n%s' % xsd_path)
+            # sys.exit()   
 
 def read_company_dic():
 
@@ -1225,7 +1232,10 @@ def make_public_docs_list(cpu_count, company_dic):
 
         # jpcrpのxbrlファイルを得る。( ifrsのxbrlファイルは使わない。 )
         xbrl_path_list = list(public_doc.glob('jpcrp*.xbrl'))
-        assert len(xbrl_path_list) == 1
+        # assert len(xbrl_path_list) == 1
+        if len(xbrl_path_list) != 1:
+            print('jpcrp*.xbrl', str(public_doc))
+            continue
 
         xbrl_path_0 = xbrl_path_list[0]
 
@@ -1393,6 +1403,7 @@ readCalc(inf)
 get_schema_dic(inf, "http://www.xbrl.org/2003/instance")
 
 if __name__ == '__main__':
+    check_taxonomy()
     company_dic = read_company_dic()
     
     cpu_count = 1
