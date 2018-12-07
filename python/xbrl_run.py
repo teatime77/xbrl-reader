@@ -4,8 +4,9 @@ from pathlib import Path
 import multiprocessing
 import json
 import codecs
+import pickle
 from multiprocessing import Process, Array
-from xbrl_reader import check_taxonomy, read_company_dic, readXbrlThread, make_public_docs_list
+from xbrl_reader import Inf, SchemaElement, Calc, init_xbrl_reader, read_company_dic, readXbrlThread, make_public_docs_list
 
 start_time = time.time()
 
@@ -15,8 +16,7 @@ def f(cpu_count, cpu_id, public_docs_list, progress, company_dic):
 
 if __name__ == '__main__':
 
-    check_taxonomy()
-    
+    init_xbrl_reader()
     company_dic = read_company_dic()
 
     cpu_count = multiprocessing.cpu_count()

@@ -8,6 +8,7 @@ import json
 import codecs
 import threading
 import time
+import pickle
 from typing import Dict, List, Any
 from operator import itemgetter
 from multiprocessing import Array
@@ -1393,17 +1394,39 @@ def readXbrlThread(cpu_count, cpu_id, edinet_code_dic, progress, company_dic):
     inf.logf.close()
     print('CPU:%d 終了:%d' % (cpu_id, int(time.time() - start_time)))
 
+xsd_dics: Dict[str, SchemaElement] = {}
+label_dics: Dict[str, bool] = {}
+company_dic = None
 
-inf = Inf()
+def init_xbrl_reader():
+    global xsd_dics, label_dics
 
-# 計算リンクファイルを読む。
-readCalc(inf)
+    check_taxonomy()
 
-# 指定されたURIのスキーマファイルと対応する名称リンクファイルの内容の辞書を作る。
-get_schema_dic(inf, "http://www.xbrl.org/2003/instance")
+    init_pickle_path = root_dir + '/data/EDINET/init.pickle'
+
+    if os.path.exists(init_pickle_path):
+
+        with open(init_pickle_path, 'rb') as f:
+            init_obj = pickle.load(f)
+
+        _, xsd_dics, label_dics = init_obj
+    else:
+        inf = Inf()
+
+        # 計算リンクファイルを読む。
+        readCalc(inf)
+
+        # 指定されたURIのスキーマファイルと対応する名称リンクファイルの内容の辞書を作る。
+        get_schema_dic(inf, "http://www.xbrl.org/2003/instance")
+
+        init_obj = (inf, xsd_dics, label_dics)
+
+        with open(init_pickle_path, 'wb') as f:
+            pickle.dump(init_obj, f)
 
 if __name__ == '__main__':
-    check_taxonomy()
+    init_xbrl_reader()
     company_dic = read_company_dic()
     
     cpu_count = 1
