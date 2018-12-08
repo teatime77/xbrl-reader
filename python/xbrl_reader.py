@@ -1,6 +1,7 @@
 
 import sys
 import os
+from html.parser import HTMLParser
 import xml.etree.ElementTree as ET
 from pathlib import Path
 import re
@@ -154,6 +155,7 @@ period_names_order = [x[0] for x in period_names_list]
 
 period_names = dict(x for x in period_names_list)
 
+inline_xbrl_path = None
 
 def findObj(v: dict, key, val):
     """指定したキーの値を返す。
@@ -196,7 +198,8 @@ class Context:
     """XBRLのコンテキスト
     """
 
-    def __init__(self):
+    def __init__(self, id):
+        self.id        = id
         self.period = None
         self.startDate = None
         self.endDate = None
@@ -415,13 +418,14 @@ class Report:
 
 class Inf:
     __slots__ = ['cpu_count', 'cpu_id', 'cur_dir', 'local_node_dic', 'local_top_context_nodes', 'local_ns_dic',
-                 'local_xsd_dics', 'local_uri2path', 'local_xsd_uri2path', 'logf', 'progress', 'period']
+                 'local_xsd_dics', 'local_uri2path', 'local_xsd_uri2path', 'logf', 'progress', 'period', 'parser', 'pending_items']
 
     def __init__(self):
         self.cur_dir = None
         self.local_xsd_uri2path = None
         self.local_xsd_dics = None
         self.period = None
+        self.pending_items = []
 
 start_time = time.time()
 prev_time = start_time
@@ -442,6 +446,8 @@ label_dics: Dict[str, bool] = {}
 dmp_cnt: Dict[str, int] = {}
 ctx_cnt: Dict[str, int] = {}
 join_cnt: Dict[str, int] = {}
+
+inf = Inf()
 
 def check_taxonomy():
     for date in [ '2013-08-31', '2014-03-31', '2015-03-31', '2016-02-29', '2017-02-28', '2018-02-28' ]:
@@ -824,15 +830,11 @@ def readContext(inf, el: ET.Element, parent_tag_name, ctx: Context):
         readContext(inf, child, tag_name, ctx)
 
 
-def makeContextNode(inf, el, id):
+def makeContextNode(inf, ctx):
     """Contextに対応するContextNodeを作る。
     """
-    # コンテキストを作る。
-    ctx = Context()
 
-    # コンテキストの情報を得る。
-    readContext(inf, el, None, ctx)
-
+    id = ctx.id
     if len(ctx.dimension_schemas) == 0:
         # 次元がない場合
 
@@ -999,6 +1001,253 @@ def get_schema_element(inf, uri, tag_name) -> SchemaElement:
     return schema
 
 
+class Unit:
+    pass
+
+tag_set = set()
+contextref_set = set()
+attr_set = set()
+class InlineXbrlParser(HTMLParser):
+    def __init__(self, inf):
+        super().__init__()
+
+        self.inf = inf
+        self.stack = []
+        self.ctx = None
+        self.text = None
+        self.in_header = False
+        self.in_hidden = False
+        self.unit   = None
+
+    def handle_context(self, tag, attr_dic, is_start, parent_tag_name):
+        if tag == "xbrli:context":
+
+            if is_start:
+                # コンテキストを作る。
+                self.ctx = Context( attr_dic['id'] )
+
+            else:
+
+                # Contextに対応するContextNodeを作る。
+                makeContextNode(self.inf, self.ctx)
+
+                self.ctx = None
+
+        elif tag == "xbrli:identifier":
+            if is_start:
+                assert parent_tag_name == "xbrli:entity"
+
+        elif tag == "xbrli:startdate":
+            if is_start:
+                assert parent_tag_name == "xbrli:period"
+            else:
+                self.ctx.startDate = self.text
+        elif tag == "xbrli:enddate":
+            if is_start:
+                assert parent_tag_name == "xbrli:period"
+            else:
+                self.ctx.endDate = self.text
+        elif tag == "xbrli:instant":
+            if is_start:
+                assert parent_tag_name == "xbrli:period"
+            else:
+                self.ctx.instant = self.text
+
+        elif tag == 'xbrldi:explicitmember':
+            if is_start:
+                assert parent_tag_name == "xbrli:scenario"
+
+                dimension = attr_dic["dimension"]
+
+                # 次元のスキーマを得る。
+                dimension_schema = getSchemaElementNsName(self.inf, dimension)
+
+                assert not dimension_schema in self.ctx.dimension_schemas
+
+                self.ctx.dimension_schemas.append(dimension_schema)
+
+            else:
+                # メンバーのスキーマを得る。
+                member_schema = getSchemaElementNsName(self.inf, self.text)
+
+                self.ctx.member_schemas.append(member_schema)
+
+        elif self.ctx is not None:
+            if is_start:
+                assert tag in ["xbrli:entity", "xbrli:period", "xbrli:scenario"]
+
+    def handle_unit(self, tag, attr_dic, is_start, parent_tag_name):
+        if tag == 'xbrli:unit':
+            if is_start:
+                self.unit   = Unit()
+            else:
+                self.unit   = None
+
+        elif tag == 'xbrli:divide':
+            pass
+        elif tag == 'xbrli:unitnumerator':
+            pass
+        elif tag == 'xbrli:measure':
+            pass
+        elif tag == 'xbrli:unitdenominator':
+            pass
+        else:
+            assert False
+
+    def handle_item(self, tag, attr_dic, is_start, parent_tag_name):
+        if tag == 'ix:nonnumeric':
+            pass
+        elif tag == 'ix:nonfraction':
+            pass
+        else:
+            assert False
+
+        if not is_start:
+            if 'xsi:nil' in attr_dic and attr_dic['xsi:nil'] == 'true':
+                text = 'nil'
+            else:
+                if self.text is None:
+
+                    print(inline_xbrl_path)
+                    print('\t', tag, attr_dic)
+                    text = 'None'
+                else:
+                    # assert self.text is not None
+                    text = self.text
+
+            self.inf.pending_items.append((tag, attr_dic, text))
+
+    def handle_header(self, tag, attr_dic, is_start, parent_tag_name):
+        if tag == 'ix:header':
+            if is_start:
+                self.in_header  = True
+            else:
+                self.in_header  = False
+
+        elif tag == 'ix:hidden':
+            if is_start:
+                self.in_hidden = True
+            else:
+                self.in_hidden = False
+
+        elif tag == 'ix:references':
+            pass
+        elif tag == 'link:schemaref':
+            assert parent_tag_name == 'ix:references'
+
+        elif tag == 'ix:resources':
+            pass
+
+        elif tag == 'link:roleref':
+            assert parent_tag_name == 'ix:resources'
+
+        elif tag == "xbrli:context" or self.ctx is not None:
+            self.handle_context(tag, attr_dic, is_start, parent_tag_name)
+
+        elif tag == 'xbrli:unit' or self.unit is not None:
+            self.handle_unit(tag, attr_dic, is_start, parent_tag_name)
+
+        else:
+            assert self.in_hidden
+            self.handle_item(tag, attr_dic, is_start, parent_tag_name)
+            
+
+    def handle_start_end_tag(self, tag, attrs, is_start):
+
+        if not tag in tag_set:
+            tag_set.add(tag)
+            print("Encountered a start tag:", tag)
+
+        if tag.startswith('ix:') or tag.startswith('xbrli:') or tag.startswith('xbrldi:'):
+            if is_start:
+            
+                attr_dic = dict(attrs)
+            else:
+                tag2, attr_dic = self.stack.pop()
+                assert tag == tag2
+
+            if len(self.stack) == 0:
+                parent_tag_name = None
+            else:
+                parent_tag_name = self.stack[-1][0]
+
+            if is_start:
+                self.stack.append((tag, attr_dic))
+
+
+            if tag == 'ix:footnote':
+                pass
+
+            elif tag == 'ix:header' or self.in_header:
+
+                self.handle_header(tag, attr_dic, is_start, parent_tag_name)
+
+            else:
+                self.handle_item(tag, attr_dic, is_start, parent_tag_name)
+
+
+            self.text = None
+
+    def handle_starttag(self, tag, attrs):
+        self.handle_start_end_tag(tag, attrs, True)
+
+    def handle_endtag(self, tag):
+        self.handle_start_end_tag(tag, None, False)
+
+    def handle_data(self, data):
+        self.text = data
+
+def read_item(inf, uri, tag_name, context_ref, text):
+
+    # 指定されたURIと名前からスキーマ要素を得る。
+    schema : SchemaElement = get_schema_element(inf, uri, tag_name)
+
+    if schema.type is not None:
+
+        # コンテスト参照からノードを得る。
+        assert context_ref in inf.local_node_dic
+        node = inf.local_node_dic[context_ref]
+
+        # XBRLインスタンスの中の開示情報の項目を作る。
+        item = Item(node, schema, text)
+
+        # ノードの値に項目を追加する。
+        node.values.append(item)
+
+        if schema.type == "金額":
+            name, label, verbose_label = schema.getLabel()
+            if label == '原材料及び貯蔵品':
+                inf.logf.write('dmp :%s %s %s\n' % (label, text, period_names[node.period]))
+                inc_key_cnt(dmp_cnt, node.period)
+
+
+def process_pending_items(inf):
+    for tag, attr_dic, text in inf.pending_items:
+        for k in attr_dic.keys():
+            if not k in attr_set:
+                attr_set.add(k)
+                print('ATTR', k)
+
+        if 'contextref' in attr_dic and 'name' in attr_dic:
+            contextref = attr_dic['contextref']
+
+            # if not contextref in contextref_set:
+            #     contextref_set.add(contextref)
+            #     print('CTX', contextref)
+
+            name = attr_dic['name']
+            prefix, tag_name = name.split(':')
+
+            # 名前空間の接頭辞をURIに変換する。
+            assert prefix in inf.local_ns_dic
+            ns_uri = inf.local_ns_dic[prefix]
+
+            read_item(inf, ns_uri, tag_name, contextref, text)
+
+        else:
+            print(tag, attr_dic)
+
+
 def read_xbrl(inf, el: ET.Element):
     """XBRLファイルの内容を読む。
     """
@@ -1006,8 +1255,14 @@ def read_xbrl(inf, el: ET.Element):
 
     if uri == "http://www.xbrl.org/2003/instance" and tag_name == "context":
 
+        # コンテキストを作る。
+        ctx = Context(id)
+
+        # コンテキストの情報を得る。
+        readContext(inf, el, None, ctx)
+
         # Contextに対応するContextNodeを作る。
-        makeContextNode(inf, el, id)
+        makeContextNode(inf, ctx)
         return
 
     # if uri in [ "http://www.xbrl.org/2003/instance", "http://www.xbrl.org/2003/linkbase" ]:
@@ -1015,30 +1270,13 @@ def read_xbrl(inf, el: ET.Element):
         pass
     else:
 
-        # 指定されたURIと名前からスキーマ要素を得る。
-        schema : SchemaElement = get_schema_element(inf, uri, tag_name)
-
         assert el.tag[0] == '{'
 
         context_ref = el.get("contextRef")
-        # assert context_ref is not None
-        if schema.type is not None and context_ref is not None:
 
-            # コンテスト参照からノードを得る。
-            assert context_ref in inf.local_node_dic
-            node = inf.local_node_dic[context_ref]
+        if context_ref is not None:
+            read_item(inf, uri, tag_name, context_ref, text)
 
-            # XBRLインスタンスの中の開示情報の項目を作る。
-            item = Item(node, schema, text)
-
-            # ノードの値に項目を追加する。
-            node.values.append(item)
-
-            if schema.type == "金額":
-                name, label, verbose_label = schema.getLabel()
-                if label == '原材料及び貯蔵品':
-                    inf.logf.write('dmp :%s %s %s\n' % (label, text, period_names[node.period]))
-                    inc_key_cnt(dmp_cnt, node.period)
 
     # 再帰的にXBRLファイルの内容を読む。
     for child in el:
@@ -1111,7 +1349,7 @@ def readCalc(inf):
 def read_public_doc(inf, category_name, public_doc, reports):
     """XBRLフォルダー内のファイルを読む。
     """
-    global xbrl_idx, prev_time, prev_cnt, xbrl_basename
+    global xbrl_idx, prev_time, prev_cnt, xbrl_basename, inline_xbrl_path
 
     xbrl_path_obj = find(public_doc.glob('jpcrp*.xbrl'))
     assert xbrl_path_obj is not None
@@ -1183,8 +1421,22 @@ def read_public_doc(inf, category_name, public_doc, reports):
     # 名前空間の接頭辞とURIの辞書を作る。
     make_local_ns_dic(inf, xbrl_path)
 
-    # XBRLファイルの内容を読む。
-    read_xbrl(inf, ET.parse(xbrl_path).getroot())
+    use_inline_xbrl = True
+    if use_inline_xbrl:
+
+        inf.pending_items = []
+        for htm_path in public_doc.glob('*.htm'):
+            inline_xbrl_path = str(htm_path)
+            # print(htm_path)
+            with codecs.open(inline_xbrl_path, 'r', 'utf-8', errors='replace') as f:
+                text = f.read()
+            inf.parser.feed(text)
+
+        process_pending_items(inf)
+
+    else:
+        # XBRLファイルの内容を読む。
+        read_xbrl(inf, ET.parse(xbrl_path).getroot())
 
     for ctx in inf.local_top_context_nodes:
         setChildren(inf, ctx)
@@ -1319,6 +1571,7 @@ def readXbrlThread(cpu_count, cpu_id, edinet_code_dic, progress, company_dic):
     inf.cpu_id = cpu_id
     inf.progress = progress
     inf.logf = open('%s/data/log-%d.txt' % (root_dir, cpu_id), 'w', encoding='utf-8')
+    inf.parser = InlineXbrlParser(inf)
 
     # EDINETコードとXBRLフォルダーのリストに対し
     for edinet_code, public_docs in edinet_code_dic.items():
