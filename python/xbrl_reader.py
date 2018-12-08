@@ -3,6 +3,7 @@ import sys
 import os
 from html.parser import HTMLParser
 import xml.etree.ElementTree as ET
+from lxml import etree
 from pathlib import Path
 import re
 import json
@@ -1007,82 +1008,76 @@ class Unit:
 tag_set = set()
 contextref_set = set()
 attr_set = set()
-class InlineXbrlParser(HTMLParser):
+
+
+
+
+def prefix_tag(el):
+    prefix = el.prefix
+    if prefix is not None:
+        k = el.tag.find('}')
+        uri = el.tag[1:k]
+        tag_name = el.tag[ k + 1:]
+        # return prefix, uri, tag_name, prefix + ':' + tag_name
+        return (prefix + ':' + tag_name).lower()
+    else:
+        return None
+        # return None, None, None, None
+
+class InlineXbrlParser():
     def __init__(self, inf):
-        super().__init__()
 
         self.inf = inf
-        self.stack = []
-        self.ctx = None
         self.text = None
-        self.in_header = False
-        self.in_hidden = False
-        self.unit   = None
 
-    def handle_context(self, tag, attr_dic, is_start, parent_tag_name):
-        if tag == "xbrli:context":
+    def handle_context(self, ctx, el, parent_tag_name):
+        tag = prefix_tag(el)
 
-            if is_start:
-                # コンテキストを作る。
-                self.ctx = Context( attr_dic['id'] )
-
-            else:
-
-                # Contextに対応するContextNodeを作る。
-                makeContextNode(self.inf, self.ctx)
-
-                self.ctx = None
-
+        if tag is None:
+            pass
         elif tag == "xbrli:identifier":
-            if is_start:
-                assert parent_tag_name == "xbrli:entity"
+            assert parent_tag_name == "xbrli:entity"
 
         elif tag == "xbrli:startdate":
-            if is_start:
-                assert parent_tag_name == "xbrli:period"
-            else:
-                self.ctx.startDate = self.text
+            assert parent_tag_name == "xbrli:period"
+            ctx.startDate = el.text
+
         elif tag == "xbrli:enddate":
-            if is_start:
-                assert parent_tag_name == "xbrli:period"
-            else:
-                self.ctx.endDate = self.text
+            assert parent_tag_name == "xbrli:period"
+            ctx.endDate = el.text
+
         elif tag == "xbrli:instant":
-            if is_start:
-                assert parent_tag_name == "xbrli:period"
-            else:
-                self.ctx.instant = self.text
+            assert parent_tag_name == "xbrli:period"
+            ctx.instant = el.text
 
         elif tag == 'xbrldi:explicitmember':
-            if is_start:
-                assert parent_tag_name == "xbrli:scenario"
+            assert parent_tag_name == "xbrli:scenario"
 
-                dimension = attr_dic["dimension"]
+            dimension = el.attrib["dimension"]
 
-                # 次元のスキーマを得る。
-                dimension_schema = getSchemaElementNsName(self.inf, dimension)
+            # 次元のスキーマを得る。
+            dimension_schema = getSchemaElementNsName(self.inf, dimension)
 
-                assert not dimension_schema in self.ctx.dimension_schemas
+            assert not dimension_schema in ctx.dimension_schemas
 
-                self.ctx.dimension_schemas.append(dimension_schema)
+            ctx.dimension_schemas.append(dimension_schema)
 
-            else:
-                # メンバーのスキーマを得る。
-                member_schema = getSchemaElementNsName(self.inf, self.text)
+            # メンバーのスキーマを得る。
+            member_schema = getSchemaElementNsName(self.inf, el.text)
 
-                self.ctx.member_schemas.append(member_schema)
+            ctx.member_schemas.append(member_schema)
 
-        elif self.ctx is not None:
-            if is_start:
-                assert tag in ["xbrli:entity", "xbrli:period", "xbrli:scenario"]
+        else:
+            assert tag in ["xbrli:entity", "xbrli:period", "xbrli:scenario"]
 
-    def handle_unit(self, tag, attr_dic, is_start, parent_tag_name):
-        if tag == 'xbrli:unit':
-            if is_start:
-                self.unit   = Unit()
-            else:
-                self.unit   = None
+        for child in el:
+            self.handle_context(ctx, child, tag)
 
+    def handle_unit(self, el):
+        tag = prefix_tag(el)
+
+        if tag is None:
+            pass
         elif tag == 'xbrli:divide':
             pass
         elif tag == 'xbrli:unitnumerator':
@@ -1094,7 +1089,10 @@ class InlineXbrlParser(HTMLParser):
         else:
             assert False
 
-    def handle_item(self, tag, attr_dic, is_start, parent_tag_name):
+        for child in el:
+            self.handle_unit(child)
+
+    def handle_item(self, el, tag):
         if tag == 'ix:nonnumeric':
             pass
         elif tag == 'ix:nonfraction':
@@ -1102,33 +1100,42 @@ class InlineXbrlParser(HTMLParser):
         else:
             assert False
 
-        if not is_start:
-            if 'xsi:nil' in attr_dic and attr_dic['xsi:nil'] == 'true':
+        if el.text is not None and el.text.strip() != '':
+            text = el.text
+        else:
+
+            xsi_nil = '{http://www.w3.org/2001/XMLSchema-instance}nil'
+            if xsi_nil in el.attrib and el.attrib[xsi_nil] == 'true':
                 text = 'nil'
             else:
-                if self.text is None:
 
-                    print(inline_xbrl_path)
-                    print('\t', tag, attr_dic)
-                    text = 'None'
-                else:
-                    # assert self.text is not None
-                    text = self.text
+                self.text = None
+                for child in el:
+                    self.handle_tag(child)
 
-            self.inf.pending_items.append((tag, attr_dic, text))
+                text = self.text
+                self.text = None
 
-    def handle_header(self, tag, attr_dic, is_start, parent_tag_name):
-        if tag == 'ix:header':
-            if is_start:
-                self.in_header  = True
-            else:
-                self.in_header  = False
+                if text is None:
 
+                    if 'escape' in el.attrib and el.attrib['escape'] == 'true':
+                        text = 'block'
+                    else:
+
+                        print(inline_xbrl_path)
+                        print('\t', el.tag, el.attrib)
+
+        self.inf.pending_items.append((el, text))
+
+
+
+    def handle_header(self, el, parent_tag_name):
+        tag = prefix_tag(el)
+
+        if tag is None:
+            pass
         elif tag == 'ix:hidden':
-            if is_start:
-                self.in_hidden = True
-            else:
-                self.in_hidden = False
+            pass
 
         elif tag == 'ix:references':
             pass
@@ -1141,61 +1148,59 @@ class InlineXbrlParser(HTMLParser):
         elif tag == 'link:roleref':
             assert parent_tag_name == 'ix:resources'
 
-        elif tag == "xbrli:context" or self.ctx is not None:
-            self.handle_context(tag, attr_dic, is_start, parent_tag_name)
+        elif tag == "xbrli:context":
+            # コンテキストを作る。
+            ctx = Context( el.attrib['id'] )
 
-        elif tag == 'xbrli:unit' or self.unit is not None:
-            self.handle_unit(tag, attr_dic, is_start, parent_tag_name)
+            for child in el:
+                self.handle_context(ctx, child, tag)
+
+            # Contextに対応するContextNodeを作る。
+            makeContextNode(self.inf, ctx)
+
+            return
+
+
+        elif tag == 'xbrli:unit':
+            for child in el:
+                self.handle_unit(child)
+
+            return
 
         else:
-            assert self.in_hidden
-            self.handle_item(tag, attr_dic, is_start, parent_tag_name)
-            
+            self.handle_item(el, tag)
 
-    def handle_start_end_tag(self, tag, attrs, is_start):
+        for child in el:
+            self.handle_header(child, tag)
 
+
+    def handle_tag(self, el):
+        if el.text is not None and el.text.strip() != '':
+            self.text = el.text
+
+        tag = str(prefix_tag(el))
         if not tag in tag_set:
             tag_set.add(tag)
             print("Encountered a start tag:", tag)
 
         if tag.startswith('ix:') or tag.startswith('xbrli:') or tag.startswith('xbrldi:'):
-            if is_start:
-            
-                attr_dic = dict(attrs)
-            else:
-                tag2, attr_dic = self.stack.pop()
-                assert tag == tag2
-
-            if len(self.stack) == 0:
-                parent_tag_name = None
-            else:
-                parent_tag_name = self.stack[-1][0]
-
-            if is_start:
-                self.stack.append((tag, attr_dic))
-
 
             if tag == 'ix:footnote':
                 pass
 
-            elif tag == 'ix:header' or self.in_header:
+            elif tag == 'ix:header':
 
-                self.handle_header(tag, attr_dic, is_start, parent_tag_name)
+                for child in el:
+                    self.handle_header(child, tag)
 
             else:
-                self.handle_item(tag, attr_dic, is_start, parent_tag_name)
+                self.handle_item(el, tag)
+        
+        else:
+            for child in el:
+                self.handle_tag(child)
+            
 
-
-            self.text = None
-
-    def handle_starttag(self, tag, attrs):
-        self.handle_start_end_tag(tag, attrs, True)
-
-    def handle_endtag(self, tag):
-        self.handle_start_end_tag(tag, None, False)
-
-    def handle_data(self, data):
-        self.text = data
 
 def read_item(inf, uri, tag_name, context_ref, text):
 
@@ -1222,20 +1227,20 @@ def read_item(inf, uri, tag_name, context_ref, text):
 
 
 def process_pending_items(inf):
-    for tag, attr_dic, text in inf.pending_items:
-        for k in attr_dic.keys():
+    for el, text in inf.pending_items:
+        for k in el.attrib.keys():
             if not k in attr_set:
                 attr_set.add(k)
                 print('ATTR', k)
 
-        if 'contextref' in attr_dic and 'name' in attr_dic:
-            contextref = attr_dic['contextref']
+        if 'contextRef' in el.attrib and 'name' in el.attrib:
+            contextref = el.attrib['contextRef']
 
             # if not contextref in contextref_set:
             #     contextref_set.add(contextref)
             #     print('CTX', contextref)
 
-            name = attr_dic['name']
+            name = el.attrib['name']
             prefix, tag_name = name.split(':')
 
             # 名前空間の接頭辞をURIに変換する。
@@ -1245,7 +1250,7 @@ def process_pending_items(inf):
             read_item(inf, ns_uri, tag_name, contextref, text)
 
         else:
-            print(tag, attr_dic)
+            print(el.tag, el.attrib)
 
 
 def read_xbrl(inf, el: ET.Element):
@@ -1371,6 +1376,7 @@ def read_public_doc(inf, category_name, public_doc, reports):
         print(inf.cpu_id, lap, cnt, category_name)
 
     inf.cur_dir = os.path.dirname(xbrl_path).replace('\\', '/')
+    # print('^^', inf.cur_dir)
 
     inf.local_node_dic = {}
     inf.local_top_context_nodes = []
@@ -1430,7 +1436,9 @@ def read_public_doc(inf, category_name, public_doc, reports):
             # print(htm_path)
             with codecs.open(inline_xbrl_path, 'r', 'utf-8', errors='replace') as f:
                 text = f.read()
-            inf.parser.feed(text)
+
+            tree = etree.XML(text)
+            inf.parser.handle_tag(tree)
 
         process_pending_items(inf)
 
