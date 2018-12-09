@@ -58,6 +58,22 @@ summary_text_items = [
     "IdentificationOfDocumentSubjectToAmendmentDEI",
 ];
 
+
+type_dic = {
+    "stringItemType": "文字列",
+    "booleanItemType": "ブール値",
+    "dateItemType": "日付",
+    "nonNegativeIntegerItemType": "非負整数",
+    "textBlockItemType": "テキストブロック",
+    "monetaryItemType": "金額",
+    "perShareItemType": "一株当たり金額",
+    "percentItemType": "割合(%)",
+    "decimalItemType": "小数",
+    "sharesItemType": "株数",
+    "domainItemType": "ドメイン",
+    "pureItemType": "純粋型"
+}
+
 category_names = {
     'metal' : '金属製品',
     'mining' : '鉱業',

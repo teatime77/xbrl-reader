@@ -12,6 +12,7 @@ var category_select;
 var category_companies;
 var edinet_codes_select;
 var selectedCategory = null;
+var num_scale = 1;
 
 var summary = true;
 var show_name = false;
@@ -42,11 +43,21 @@ function getLabel(obj){
     if(show_verbose_label) return obj['verbose_label'];
 }
 
+function dsp_type(type_name){
+    if(type_name in type_dic){
+        return type_dic[type_name]
+    }
+    else{
+        return type_name;
+    }
+
+}
+
 function tableItem(end_dates, table, obj, nest){
     tab = '&nbsp;'.repeat(4 * nest);
 
     prefix = (summary ? '' : 'itm:');
-    if(obj['type'] == '文字列' || obj['type'] == 'テキストブロック'){
+    if(obj['type'] == 'stringItemType' || obj['type'] == 'textBlockItemType'){
 
         if(summary && obj['children'].length == 0 && summary_text_items.indexOf(obj['name']) == -1){
 
@@ -55,7 +66,7 @@ function tableItem(end_dates, table, obj, nest){
 
         var row = table.insertRow(-1);
         addCell(row, tab + prefix + getLabel(obj), end_dates.length);
-        addCell(row, obj['type'], end_dates.length);
+        addCell(row, dsp_type(obj['type']), end_dates.length);
         addCell(row, obj['text'][0], undefined, end_dates.length);
 
         for(var i = 1; i < obj['text'].length; i++){
@@ -67,20 +78,18 @@ function tableItem(end_dates, table, obj, nest){
 
         var row = table.insertRow(-1);
         addCell(row, tab + prefix + getLabel(obj));
-        addCell(row, obj['type']);
+        addCell(row, dsp_type(obj['type']));
         for(var x of obj['text']){
             var txt = x;
-            /*
-            if(obj['type'] == '金額'){
+            if(obj['type'] == 'monetaryItemType' && num_scale != 1){
                 try{
                     var n = parseInt(x);
                     if(! isNaN(n)){
-                        txt = '' + Math.round(n / 1000);
+                        txt = '' + Math.round(n / num_scale );
                     }
                 }
                 catch(e){}
             }
-            */
             addCell(row, txt);
         }
     }
@@ -309,6 +318,23 @@ function on_load(){
     );
 }
 
+
+
+function scale_changed(){
+    var idx = document.getElementById('scale').selectedIndex;
+    switch(idx){
+        case 1: num_scale = 1000; break;
+        case 2: num_scale = 1000 * 1000; break;
+        default: return;
+    }
+
+    if(cur_doc != undefined){
+        makeTable(cur_doc);
+    }
+}
+
+
+
 function summary_changed(){
     var idx = document.getElementById('summary').selectedIndex;
     if(idx == -1){
@@ -395,6 +421,7 @@ td, th {
             <tr>
                 <th>業種</th>
                 <th>会社名</th>
+                <th>表示単位</th>
                 <th>要約／詳細</th>
                 <th>項目の表示</th>
                 <th></th>
@@ -410,6 +437,13 @@ td, th {
                     <select id='edinet_codes' size="10" onchange="edinet_codes_changed()" style="width:20em; overflow:auto">
                     </select>
                 </td>
+                <td>                    
+                        <select id='scale' size="3" onchange="scale_changed()" style="height: 80px">
+                            <option selected>円</option>
+                            <option>千円</option>
+                            <option>百万円</option>
+                        </select>
+                    </td>    
                 <td>                    
                     <select id='summary' size="3" onchange="summary_changed()" style="height: 80px">
                         <option selected>要約</option>

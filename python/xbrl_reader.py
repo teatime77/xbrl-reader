@@ -108,21 +108,6 @@ category_name_dic = {
 label_role = "http://www.xbrl.org/2003/role/label"
 verboseLabel_role = "http://www.xbrl.org/2003/role/verboseLabel"
 
-type_dic = {
-    "xbrli:stringItemType": "文字列",
-    "xbrli:booleanItemType": "ブール値",
-    "xbrli:dateItemType": "日付",
-    "xbrli:nonNegativeIntegerItemType": "非負整数",
-    "nonnum:textBlockItemType": "テキストブロック",
-    "xbrli:monetaryItemType": "金額",
-    "num:perShareItemType": "一株当たり金額",
-    "num:percentItemType": "割合(%)",
-    "xbrli:decimalItemType": "小数",
-    "xbrli:sharesItemType": "株数",
-    "nonnum:domainItemType": "ドメイン",
-    "xbrli:pureItemType": "純粋型"
-}
-
 # 報告書インスタンス作成ガイドラインの 5-4-5 コンテキストの設定例
 period_names_list = [
     ("FilingDateInstant", "提出日時点"),
@@ -312,9 +297,9 @@ class Item(XbrlNode):
         if self.text is None:
             self.text = 'null-text'
         else:
-            if self.schema.type == "テキストブロック":
+            if self.schema.type == "textBlockItemType":
                 self.text = "省略"
-            elif self.schema.type == '文字列':
+            elif self.schema.type == 'stringItemType':
                 self.text = self.text.replace('\n', ' ')
 
                 if 100 < len(self.text):
@@ -333,7 +318,7 @@ class Item(XbrlNode):
 
         union['text'][idx] = self.text
 
-        if self.schema.type == "金額" and self.label == '原材料及び貯蔵品':
+        if self.schema.type == "monetaryItemType" and self.label == '原材料及び貯蔵品':
             inf.logf.write('union:%s %s %d %s\n' % (self.label, self.text, idx, period_names[inf.period]))
             inc_key_cnt(join_cnt, inf.period)
 
@@ -349,7 +334,7 @@ class Item(XbrlNode):
 
         union['text'][idx] = self.text
 
-        if self.schema.type == "金額" and self.label == '原材料及び貯蔵品':
+        if self.schema.type == "monetaryItemType" and self.label == '原材料及び貯蔵品':
             inf.logf.write('join:%s %s %s\n' % (self.label, self.text, period_names[self.ctx.period]))
             inc_key_cnt(join_cnt, self.ctx.period)
 
@@ -621,7 +606,7 @@ def setChildren(inf, ctx: ContextNode):
                 item.children.append(sum_item)
                 top_items.remove(sum_item)
 
-        if item.schema.type == "金額":
+        if item.schema.type == "monetaryItemType":
             name, label, verbose_label = item.schema.getLabel()
             if label == '原材料及び貯蔵品':
                 inf.logf.write('ctx :%s %s %s\n' % (label, item.text, period_names[ctx.period]))
@@ -682,11 +667,7 @@ def ReadSchema(inf, is_local, xsd_path, el: ET.Element, xsd_dic: Dict[str, Schem
         schema.name = el.get("name")
         schema.id = el.get("id")
 
-        type = el.get("type")
-        if type in type_dic:
-            schema.type = type_dic[type]
-        else:
-            schema.type = type
+        schema.type = el.get("type").split(':')[-1]
 
         xsd_dic[schema.name] = schema
 
@@ -1122,8 +1103,16 @@ class InlineXbrlParser():
                         text = 'block'
                     else:
 
+                        text = 'none'
                         print(inline_xbrl_path)
                         print('\t', el.tag, el.attrib)
+
+        if tag == 'ix:nonfraction' and not text in [ 'nil', 'block', 'none' ] :
+            text    = text.replace(',', '')
+            if 'scale' in el.attrib:
+                scale = float( el.attrib['scale'] )
+                if 0 < scale:
+                    text = str(int( float(text) * pow(10, scale) ))
 
         self.inf.pending_items.append((el, text))
 
@@ -1219,7 +1208,7 @@ def read_item(inf, uri, tag_name, context_ref, text):
         # ノードの値に項目を追加する。
         node.values.append(item)
 
-        if schema.type == "金額":
+        if schema.type == "monetaryItemType":
             name, label, verbose_label = schema.getLabel()
             if label == '原材料及び貯蔵品':
                 inf.logf.write('dmp :%s %s %s\n' % (label, text, period_names[node.period]))
