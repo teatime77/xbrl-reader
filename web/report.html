@@ -3,7 +3,7 @@
 <html lang="en" xmlns="http://www.w3.org/1999/xhtml">
 <head>
 <meta charset="utf-8" />
-<title>四半期報告書</title>
+<title>インラインXBRLの見本</title>
 <script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.10.1/jquery.min.js"></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.7.3/Chart.min.js"></script>
 <script type="text/javascript" src="js/util.js"></script>
@@ -21,18 +21,36 @@ function report_changed(){
 }
 
 </script>
+<style type="text/css">  
+body{
+    width:100%; /*ページ全体の幅は100%と指定する*/	
+    text-align:center; /*ページ全体を中央揃えにする*/
+}  
+</style>
+    
 </head>
 </head>
 <body>
+    <span style="color:red;font-size:36pt;">アプリの出力の<span style="font-size:48pt">見本</span>です。</span></br>
+    <span style="color:red;font-size:24pt;">XBRLの構造の学習目的にのみお使いください。</span></br>
+    
 <table>
-    <tr>
-        <td width='10%' style="vertical-align:top">
-            <select id='report-sel' onchange="report_changed()" style='vertical-align:top'></select>
-        </td>
-        <td width='90%' style="vertical-align:top">
-            <iframe src="https://www.yahoo.co.jp/" id="report-frame"  style="width: 1000px; height: 2000px;"></iframe>
-        </td>
-    </tr>
+    <thead>
+        <tr>
+            <th  style="text-align: left">日付 / ファイル名</th>
+            <th>インラインXBRL</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td width='10%' style="vertical-align:top">
+                <select id='report-sel' onchange="report_changed()" style='width:10em; overflow:auto; vertical-align:top'></select>
+            </td>
+            <td width='90%' style="vertical-align:top">
+                <iframe src="https://www.yahoo.co.jp/" id="report-frame"  style="width: 1000px; height: 2000px;"></iframe>
+            </td>
+        </tr>
+    </tbody>
 </table>
             
 </body>

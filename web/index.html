@@ -3,7 +3,7 @@
 <html lang="en" xmlns="http://www.w3.org/1999/xhtml">
 <head>
 <meta charset="utf-8" />
-<title>四半期報告書</title>
+<title>XBRLの解析の見本</title>
 <script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.10.1/jquery.min.js"></script>
 <script type="text/javascript" src="js/util.js"></script>
 
@@ -70,6 +70,7 @@ function tableItem(end_dates, table, obj, nest){
         addCell(row, obj['type']);
         for(var x of obj['text']){
             var txt = x;
+            /*
             if(obj['type'] == '金額'){
                 try{
                     var n = parseInt(x);
@@ -79,6 +80,7 @@ function tableItem(end_dates, table, obj, nest){
                 }
                 catch(e){}
             }
+            */
             addCell(row, txt);
         }
     }
@@ -171,9 +173,21 @@ function makeReport(){
 
 
 function open_report(){
-    if(sub_win == undefined){
+    if(sub_win == undefined || sub_win.closed){
 
         sub_win = window.open('report.html', 'xbrl-report');
+
+        if(cur_doc != undefined){
+            setTimeout(function(){
+                makeReport();
+            }, 1000)
+        }
+    }
+    else{
+        if(cur_doc != undefined){
+
+            makeReport();
+        }
     }
 }
 
@@ -359,23 +373,68 @@ function edinet_codes_changed(){
     readXbrl(category_name, company['edinet_code']);
 }
 
-</script>    
+</script>  
+
+<style type="text/css">  
+body{
+  width:100%; /*ページ全体の幅は100%と指定する*/	
+  text-align:center; /*ページ全体を中央揃えにする*/
+}  
+td, th {
+    padding: 10px;
+}
+</style>
 </head>
 <body onload="on_load()">
+    
+        <span style="color:red;font-size:36pt;">アプリの出力の<span style="font-size:48pt">見本</span>です。</span></br>
+        <span style="color:red;font-size:24pt;">XBRLの構造の学習目的にのみお使いください。</span></br>
 
-<select id='summary' size="3" onchange="summary_changed()">
-    <option selected>要約</option>
-    <option>詳細</option>
-</select>
-<select id='label_type' size="3" onchange="label_type_changed()">
-    <option>項目名</option>
-    <option selected>ラベル</option>
-    <option>冗長ラベル</option>
-</select>
+    <table>
+        <thead>
+            <tr>
+                <th>業種</th>
+                <th>会社名</th>
+                <th>要約／詳細</th>
+                <th>項目の表示</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
 
-<select id='category' size="10" onchange="category_changed()"></select>
-<select id='edinet_codes' size="10" onchange="edinet_codes_changed()"></select>
-<input type="button" value="報告書表示" onclick="open_report()" />
+            <tr valign="top" >
+                <td>                    
+                    <select id='category' size="10" onchange="category_changed()" style="width:10em; overflow:auto"></select>
+                </td>
+                <td>                    
+                    <select id='edinet_codes' size="10" onchange="edinet_codes_changed()" style="width:20em; overflow:auto">
+                    </select>
+                </td>
+                <td>                    
+                    <select id='summary' size="3" onchange="summary_changed()" style="height: 80px">
+                        <option selected>要約</option>
+                        <option>詳細</option>
+                    </select>
+                </td>
+                <td>                    
+                    <select id='label_type' size="3" onchange="label_type_changed()" style="height: 80px">
+                        <option>項目名</option>
+                        <option selected>ラベル</option>
+                        <option>冗長ラベル</option>
+                    </select>
+                </td>
+                <td valign="center">
+                        <button type="button" onclick="open_report()" style="height: 80px" >
+                                インラインXBRL<br/>
+                                表示
+                        </button>    
+                </td>
+            </tr>
+        </tbody>        
+    </table>
+        
+
+
 <br/>
 <div id='doc-div' ></div>
 
