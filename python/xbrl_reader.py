@@ -404,7 +404,7 @@ class Report:
 
 class Inf:
     __slots__ = ['cpu_count', 'cpu_id', 'cur_dir', 'local_node_dic', 'local_top_context_nodes', 'local_ns_dic',
-                 'local_xsd_dics', 'local_uri2path', 'local_xsd_uri2path', 'logf', 'progress', 'period', 'parser', 'pending_items']
+                 'local_xsd_dics', 'local_uri2path', 'local_xsd_uri2path', 'logf', 'progress', 'period', 'parser', 'pending_items' ]
 
     def __init__(self):
         self.cur_dir = None
@@ -511,8 +511,10 @@ def norm_uri(uri):
         return uri2
 
     elif uri in [
+        'http://xbrl.ifrs.org/taxonomy/2016-03-31/ifrs-full',
         'http://xbrl.ifrs.org/taxonomy/2015-03-11/ifrs-full',
         'http://xbrl.ifrs.org/taxonomy/2014-03-05/ifrs-full',
+        'http://xbrl.ifrs.org/taxonomy/2016-03-31/full_ifrs/full_ifrs-cor_2016-03-31.xsd',
         'http://xbrl.ifrs.org/taxonomy/2014-03-05/full_ifrs/full_ifrs-cor_2014-03-05.xsd'
     ]:
         return 'http://xbrl.ifrs.org/taxonomy/2015-03-11/full_ifrs/full_ifrs-cor_2015-03-11.xsd'
@@ -526,6 +528,10 @@ def getSchemaElementNsName(inf, text) -> SchemaElement:
     prefix, tag_name = text.split(':')
 
     # 名前空間の接頭辞をURIに変換する。
+    if not prefix in inf.local_ns_dic:
+        print('prefix error', text)
+        print('\t', inline_xbrl_path)
+
     assert prefix in inf.local_ns_dic
     ns_uri = inf.local_ns_dic[prefix]
 
@@ -716,16 +722,20 @@ def get_schema_label_path(inf, ns_uri):
             ns_uri = 'http://xbrl.ifrs.org/taxonomy/2015-03-11/ifrs-full'
         elif ns_uri == 'http://xbrl.ifrs.org/taxonomy/2014-03-05/full_ifrs/full_ifrs-cor_2014-03-05.xsd':
             ns_uri = 'http://xbrl.ifrs.org/taxonomy/2014-03-05/ifrs-full'
+        elif ns_uri == 'http://xbrl.ifrs.org/taxonomy/2016-03-31/full_ifrs/full_ifrs-cor_2016-03-31.xsd':
+            ns_uri = 'http://xbrl.ifrs.org/taxonomy/2016-03-31/ifrs-full'
 
         if not ns_uri in [
+            'http://xbrl.ifrs.org/taxonomy/2016-03-31/ifrs-full',
             'http://xbrl.ifrs.org/taxonomy/2015-03-11/ifrs-full',
-            'http://xbrl.ifrs.org/taxonomy/2014-03-05/ifrs-full'
+            'http://xbrl.ifrs.org/taxonomy/2014-03-05/ifrs-full',
         ]:
-            print(ns_uri)
+            print('unknown ifrs [%s]' % ns_uri)
 
         assert ns_uri in [
+            'http://xbrl.ifrs.org/taxonomy/2016-03-31/ifrs-full',
             'http://xbrl.ifrs.org/taxonomy/2015-03-11/ifrs-full',
-            'http://xbrl.ifrs.org/taxonomy/2014-03-05/ifrs-full'
+            'http://xbrl.ifrs.org/taxonomy/2014-03-05/ifrs-full',
         ]
 
         ifrs_path = root_dir + "/data/IFRS/IFRST_%s/full_ifrs/full_ifrs-cor_%s.xsd"
@@ -740,11 +750,14 @@ def get_schema_label_path(inf, ns_uri):
             xsd_path = ifrs_path % ('2015-03-11', '2015-03-11')
             assert os.path.exists(xsd_path)
 
-        if yyyymmdd == '2015-03-11':
+        if yyyymmdd == '2016-03-31':
+            label_path = root_dir + '/data/IFRS/ja/Japanese-Taxonomy-2016/full_ifrs/labels/lab_full_ifrs-ja_2016-03-31.xml'
+        elif yyyymmdd == '2015-03-11':
             label_path = root_dir + '/data/IFRS/ja/Japanese-Taxonomy-2015/full_ifrs/labels/lab_full_ifrs-ja_2015-03-11.xml'
         elif yyyymmdd == '2014-03-05':
             label_path = root_dir + '/data/IFRS/ja/Japanese-Taxonomy-2014/full_ifrs/labels/lab_full_ifrs-ja_2014-03-05_rev_2015-03-06.xml'
         else:
+            print('IFRS date:%s' % yyyymmdd)
             assert False
 
     elif ns_uri == "http://www.xbrl.org/2003/instance":
@@ -1101,13 +1114,12 @@ class InlineXbrlParser():
 
                     if 'escape' in el.attrib and el.attrib['escape'] == 'true':
                         text = 'block'
-                    else:
 
-                        text = 'none'
-                        print(inline_xbrl_path)
-                        print('\t', el.tag, el.attrib)
+                    elif len(el) != 0:
+                        
+                        return
 
-        if tag == 'ix:nonfraction' and not text in [ 'nil', 'block', 'none' ] :
+        if tag == 'ix:nonfraction' and text is not None and not text in [ 'nil', 'block', 'none' ] :
             text    = text.replace(',', '')
             if 'scale' in el.attrib:
                 scale = float( el.attrib['scale'] )
@@ -1196,7 +1208,11 @@ def read_item(inf, uri, tag_name, context_ref, text):
     # 指定されたURIと名前からスキーマ要素を得る。
     schema : SchemaElement = get_schema_element(inf, uri, tag_name)
 
-    if schema.type is not None:
+    if schema.type is not None and schema.type != 'textBlockItemType':
+
+        if text is None:
+            print(inline_xbrl_path)
+            print('\t', uri, tag_name, schema.type)
 
         # コンテスト参照からノードを得る。
         assert context_ref in inf.local_node_dic
@@ -1422,6 +1438,8 @@ def read_public_doc(inf, category_name, public_doc, reports):
         inf.pending_items = []
         for htm_path in public_doc.glob('*.htm'):
             inline_xbrl_path = str(htm_path)
+            if inline_xbrl_path.find('_ifrs-') != -1:
+                continue
             # print(htm_path)
             with codecs.open(inline_xbrl_path, 'r', 'utf-8', errors='replace') as f:
                 text = f.read()
@@ -1593,6 +1611,13 @@ def readXbrlThread(cpu_count, cpu_id, edinet_code_dic, progress, company_dic):
             
             # XBRLフォルダー内のファイルを読む。
             read_public_doc(inf, category_name, public_doc, reports)
+
+        accountings = list(set(value.text  for report in reports for obj in report.ctx_objs if obj.period == 'FilingDateInstant' for value in obj.values if value.name == 'AccountingStandardsDEI' ))
+        if len(accountings) != 1 or accountings[0] != 'Japan GAAP':
+            company_name = find(value.text  for obj in reports[0].ctx_objs if obj.period == 'FilingDateInstant' for value in obj.values if value.name == 'CompanyNameCoverPage' )
+            print(company_name, accountings)
+            print('\t', public_docs[0].parent.parent.parent)
+            continue
 
         # 当会計期間終了日でソートする。
         reports = sorted(reports, key=lambda x: x.end_date)
