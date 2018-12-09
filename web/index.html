@@ -405,8 +405,13 @@ function edinet_codes_changed(){
 body{
   width:100%; /*ページ全体の幅は100%と指定する*/	
   text-align:center; /*ページ全体を中央揃えにする*/
-}  
-td, th {
+}
+
+td, th{
+    text-align: left;
+}
+
+.td1 {
     padding: 10px;
 }
 </style>
@@ -419,38 +424,38 @@ td, th {
     <table>
         <thead>
             <tr>
-                <th>業種</th>
-                <th>会社名</th>
-                <th>表示単位</th>
-                <th>要約／詳細</th>
-                <th>項目の表示</th>
-                <th></th>
+                <th class="td1" >業種</th>
+                <th class="td1" >会社名</th>
+                <th class="td1" >表示単位</th>
+                <th class="td1" >要約／詳細</th>
+                <th class="td1" >項目の表示</th>
+                <th class="td1" ></th>
             </tr>
         </thead>
         <tbody>
 
             <tr valign="top" >
-                <td>                    
+                <td class="td1" >                    
                     <select id='category' size="10" onchange="category_changed()" style="width:10em; overflow:auto"></select>
                 </td>
-                <td>                    
+                <td class="td1" >                    
                     <select id='edinet_codes' size="10" onchange="edinet_codes_changed()" style="width:20em; overflow:auto">
                     </select>
                 </td>
-                <td>                    
+                <td class="td1" >                    
                         <select id='scale' size="3" onchange="scale_changed()" style="height: 80px">
                             <option selected>円</option>
                             <option>千円</option>
                             <option>百万円</option>
                         </select>
                     </td>    
-                <td>                    
+                <td class="td1" >                    
                     <select id='summary' size="3" onchange="summary_changed()" style="height: 80px">
                         <option selected>要約</option>
                         <option>詳細</option>
                     </select>
                 </td>
-                <td>                    
+                <td class="td1" >                    
                     <select id='label_type' size="3" onchange="label_type_changed()" style="height: 80px">
                         <option>項目名</option>
                         <option selected>ラベル</option>
