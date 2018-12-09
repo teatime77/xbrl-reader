@@ -142,6 +142,7 @@ period_names_order = [x[0] for x in period_names_list]
 period_names = dict(x for x in period_names_list)
 
 inline_xbrl_path = None
+xbrl_path = None
 
 def findObj(v: dict, key, val):
     """指定したキーの値を返す。
@@ -157,7 +158,8 @@ class SchemaElement:
     """スキーマファイルの中の項目 ( 語彙スキーマ )
     """
 
-    def __init__(self):
+    def __init__(self, el):
+        self.el = el
         self.uri = None
         self.name = None
         self.id = None
@@ -499,25 +501,25 @@ def norm_uri(uri):
         v = uri.split('/')
 
         name_space = v[4]
-        yymmdd = v[5]
+        yyyymmdd = v[5]
         name_cor = v[6]
 
         # uri : http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2017-02-28/jppfs_cor
         # uri2: http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2017-02-28/jppfs_cor_2017-02-28.xsd
 
-        file_name = name_cor + "_" + yymmdd + '.xsd'
+        file_name = name_cor + "_" + yyyymmdd + '.xsd'
         uri2 = '/'.join(v[:6]) + '/' + file_name
 
         return uri2
 
-    elif uri in [
-        'http://xbrl.ifrs.org/taxonomy/2016-03-31/ifrs-full',
-        'http://xbrl.ifrs.org/taxonomy/2015-03-11/ifrs-full',
-        'http://xbrl.ifrs.org/taxonomy/2014-03-05/ifrs-full',
-        'http://xbrl.ifrs.org/taxonomy/2016-03-31/full_ifrs/full_ifrs-cor_2016-03-31.xsd',
-        'http://xbrl.ifrs.org/taxonomy/2014-03-05/full_ifrs/full_ifrs-cor_2014-03-05.xsd'
-    ]:
-        return 'http://xbrl.ifrs.org/taxonomy/2015-03-11/full_ifrs/full_ifrs-cor_2015-03-11.xsd'
+    elif uri.startswith('http://xbrl.ifrs.org/taxonomy/'):
+
+        yyyymmdd = uri.split('/')[4]
+        if yyyymmdd == '2014-03-05':
+            yyyymmdd = '2015-03-11'
+
+        # return 'http://xbrl.ifrs.org/taxonomy/2015-03-11/full_ifrs/full_ifrs-cor_2015-03-11.xsd'
+        return 'http://xbrl.ifrs.org/taxonomy/%s/full_ifrs/full_ifrs-cor_%s.xsd' % (yyyymmdd, yyyymmdd)
 
     else:
         return uri
@@ -668,7 +670,7 @@ def ReadSchema(inf, is_local, xsd_path, el: ET.Element, xsd_dic: Dict[str, Schem
 
     elif tag_name == "element":
 
-        schema = SchemaElement()
+        schema = SchemaElement(el)
         schema.uri = uri
         schema.name = el.get("name")
         schema.id = el.get("id")
@@ -692,7 +694,7 @@ def get_schema_label_path(inf, ns_uri):
 
         v2 = ns_uri.split('/')
         name_space = v2[4]
-        yymmdd = v2[5]
+        yyyymmdd = v2[5]
         name_cor = v2[6]
 
         # '/2013-08-31/タクソノミ/taxonomy/jpdei/2013-08-31/jpdei_cor_2013-08-31.xsd'
@@ -700,10 +702,10 @@ def get_schema_label_path(inf, ns_uri):
         if ns_uri.endswith('.xsd'):
             file_name = os.path.basename(ns_uri)
         else:
-            file_name = name_cor + "_" + yymmdd + '.xsd'
-        xsd_path = (taxonomy_tmpl % yymmdd) + name_space + '/' + yymmdd + '/' + file_name
-        label_path = (
-                             taxonomy_tmpl % yymmdd) + name_space + '/' + yymmdd + '/label/' + name_space + "_" + yymmdd + '_lab.xml'
+            file_name = name_cor + "_" + yyyymmdd + '.xsd'
+
+        xsd_path   = (taxonomy_tmpl % yyyymmdd) + name_space + '/' + yyyymmdd + '/' + file_name
+        label_path = (taxonomy_tmpl % yyyymmdd) + name_space + '/' + yyyymmdd + '/label/' + name_space + "_" + yyyymmdd + '_lab.xml'
 
     elif ns_uri.startswith("http://disclosure.edinet-fsa.go.jp/"):
         # http://disclosure.edinet-fsa.go.jp/ifrs/q2r/001/E00949-000/2016-09-30/01/2016-11-04
@@ -718,47 +720,15 @@ def get_schema_label_path(inf, ns_uri):
         label_path = base_path + '_lab.xml'
 
     elif ns_uri.startswith("http://xbrl.ifrs.org/taxonomy/"):
-        if ns_uri == 'http://xbrl.ifrs.org/taxonomy/2015-03-11/full_ifrs/full_ifrs-cor_2015-03-11.xsd':
-            ns_uri = 'http://xbrl.ifrs.org/taxonomy/2015-03-11/ifrs-full'
-        elif ns_uri == 'http://xbrl.ifrs.org/taxonomy/2014-03-05/full_ifrs/full_ifrs-cor_2014-03-05.xsd':
-            ns_uri = 'http://xbrl.ifrs.org/taxonomy/2014-03-05/ifrs-full'
-        elif ns_uri == 'http://xbrl.ifrs.org/taxonomy/2016-03-31/full_ifrs/full_ifrs-cor_2016-03-31.xsd':
-            ns_uri = 'http://xbrl.ifrs.org/taxonomy/2016-03-31/ifrs-full'
 
-        if not ns_uri in [
-            'http://xbrl.ifrs.org/taxonomy/2016-03-31/ifrs-full',
-            'http://xbrl.ifrs.org/taxonomy/2015-03-11/ifrs-full',
-            'http://xbrl.ifrs.org/taxonomy/2014-03-05/ifrs-full',
-        ]:
-            print('unknown ifrs [%s]' % ns_uri)
+        yyyymmdd = ns_uri.split('/')[4]
 
-        assert ns_uri in [
-            'http://xbrl.ifrs.org/taxonomy/2016-03-31/ifrs-full',
-            'http://xbrl.ifrs.org/taxonomy/2015-03-11/ifrs-full',
-            'http://xbrl.ifrs.org/taxonomy/2014-03-05/ifrs-full',
-        ]
+        xsd_path = "%s/data/IFRS/IFRST_%s/full_ifrs/full_ifrs-cor_%s.xsd" % (root_dir, yyyymmdd, yyyymmdd)
+        assert os.path.exists(xsd_path)
 
-        ifrs_path = root_dir + "/data/IFRS/IFRST_%s/full_ifrs/full_ifrs-cor_%s.xsd"
-
-        v = ns_uri.split('/')
-        yyyymmdd = v[4]
-
-        xsd_path = ifrs_path % (yyyymmdd, yyyymmdd)
-        if not os.path.exists(xsd_path):
-            # 2014-03-05が無いので、2015-03-11で代用
-
-            xsd_path = ifrs_path % ('2015-03-11', '2015-03-11')
-            assert os.path.exists(xsd_path)
-
-        if yyyymmdd == '2016-03-31':
-            label_path = root_dir + '/data/IFRS/ja/Japanese-Taxonomy-2016/full_ifrs/labels/lab_full_ifrs-ja_2016-03-31.xml'
-        elif yyyymmdd == '2015-03-11':
-            label_path = root_dir + '/data/IFRS/ja/Japanese-Taxonomy-2015/full_ifrs/labels/lab_full_ifrs-ja_2015-03-11.xml'
-        elif yyyymmdd == '2014-03-05':
-            label_path = root_dir + '/data/IFRS/ja/Japanese-Taxonomy-2014/full_ifrs/labels/lab_full_ifrs-ja_2014-03-05_rev_2015-03-06.xml'
-        else:
-            print('IFRS date:%s' % yyyymmdd)
-            assert False
+        yyyy = yyyymmdd.split('-')[0]
+        label_path = '%s/data/IFRS/ja/Japanese-Taxonomy-%s/full_ifrs/labels/lab_full_ifrs-ja_%s.xml' % (root_dir, yyyy, yyyymmdd)
+        assert os.path.exists(label_path)
 
     elif ns_uri == "http://www.xbrl.org/2003/instance":
         xsd_path = root_dir + "/data/IFRS/xbrl-instance-2003-12-31.xsd"
@@ -1211,8 +1181,14 @@ def read_item(inf, uri, tag_name, context_ref, text):
     if schema.type is not None and schema.type != 'textBlockItemType':
 
         if text is None:
-            print(inline_xbrl_path)
-            print('\t', uri, tag_name, schema.type)
+            if 'nillable' in schema.el.attrib and schema.el.attrib['nillable'] == 'true':
+                return
+            else:
+                if inline_xbrl_path is not None:
+                    print(inline_xbrl_path)
+                else:
+                    print(xbrl_path)
+                print('\ttext is none', uri, tag_name, schema.type, schema.el.attrib)
 
         # コンテスト参照からノードを得る。
         assert context_ref in inf.local_node_dic
@@ -1359,7 +1335,7 @@ def readCalc(inf):
 def read_public_doc(inf, category_name, public_doc, reports):
     """XBRLフォルダー内のファイルを読む。
     """
-    global xbrl_idx, prev_time, prev_cnt, xbrl_basename, inline_xbrl_path
+    global xbrl_idx, prev_time, prev_cnt, xbrl_basename, inline_xbrl_path, xbrl_path
 
     xbrl_path_obj = find(public_doc.glob('jpcrp*.xbrl'))
     assert xbrl_path_obj is not None
@@ -1432,7 +1408,7 @@ def read_public_doc(inf, category_name, public_doc, reports):
     # 名前空間の接頭辞とURIの辞書を作る。
     make_local_ns_dic(inf, xbrl_path)
 
-    use_inline_xbrl = True
+    use_inline_xbrl = False
     if use_inline_xbrl:
 
         inf.pending_items = []
@@ -1615,9 +1591,8 @@ def readXbrlThread(cpu_count, cpu_id, edinet_code_dic, progress, company_dic):
         accountings = list(set(value.text  for report in reports for obj in report.ctx_objs if obj.period == 'FilingDateInstant' for value in obj.values if value.name == 'AccountingStandardsDEI' ))
         if len(accountings) != 1 or accountings[0] != 'Japan GAAP':
             company_name = find(value.text  for obj in reports[0].ctx_objs if obj.period == 'FilingDateInstant' for value in obj.values if value.name == 'CompanyNameCoverPage' )
-            print(company_name, accountings)
-            print('\t', public_docs[0].parent.parent.parent)
-            continue
+            print(company_name, accountings, public_docs[0].parent.parent.parent)
+            # continue
 
         # 当会計期間終了日でソートする。
         reports = sorted(reports, key=lambda x: x.end_date)
