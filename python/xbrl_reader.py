@@ -159,6 +159,8 @@ class SchemaElement:
     """
 
     def __init__(self, el):
+        assert el is not None
+        
         self.el = el
         self.uri = None
         self.name = None
@@ -675,7 +677,9 @@ def ReadSchema(inf, is_local, xsd_path, el: ET.Element, xsd_dic: Dict[str, Schem
         schema.name = el.get("name")
         schema.id = el.get("id")
 
-        schema.type = el.get("type").split(':')[-1]
+        tp = el.get("type")
+        if tp is not None:
+            schema.type = tp.split(':')[-1]
 
         xsd_dic[schema.name] = schema
 
@@ -1465,6 +1469,8 @@ def read_public_doc(inf, category_name, public_doc, reports):
 
 
 def make_public_docs_list(cpu_count, company_dic):
+    print('make public docs list...')
+
     # カテゴリー別の会社リスト
     category_companies = []
 
@@ -1547,6 +1553,8 @@ def make_public_docs_list(cpu_count, company_dic):
     # JSONをファイルに書く。
     with codecs.open(json_path, 'w', 'utf-8') as json_f:
         json.dump(category_companies, json_f, ensure_ascii=False)
+
+    print('make public docs list end')
 
     # 各CPUごとの、EDINETコード別のXBRLフォルダーの辞書を返す。
     return public_docs_list
