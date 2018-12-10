@@ -1,7 +1,7 @@
 # XBRL Reader
 
 1. XBRLファイルをpythonで解析してJSONに変換します。
-2. 変換したJSONをJavascriptで読んでウェブページに表示します。
+2. 変換したJSONをJavascriptで読み込んでウェブページに表示します。
 
 ## 動作環境
 以下の環境で動作を確認しています。
@@ -21,19 +21,20 @@
 - Edge
 
 ※ ajaxでローカルファイルを読むので **Chrome** の場合はローカルサーバーが必要です。
+
 ※ IEでは動作しません。
 
 ## インストール方法
 
 ### 1. gitでソースを取得します。
 
-適当なフォルダーにソースをクローンします。
+適当なフォルダーにソースをダウンロードします。
 
 ```bash
 git clone https://github.com/teatime77/xbrl-reader.git
 ```
 
-以下では **XBRL-HOME** というフォルダーにクローンしたとして説明します。
+以下では **XBRL-HOME** というフォルダーにダウンロードしたとして説明します。
 
 ### 2. タクソノミファイルを取得します。
 
@@ -73,6 +74,7 @@ XBRL-HOME - python
 ### 4. XHTMLのパーサーをインストールします。
 
 XHTMLをパースするのに **lxml** を使っています。
+
 [lxml - XML and HTML with Python](https://lxml.de/)
 
 pipでインストールできます。
@@ -81,7 +83,7 @@ pipでインストールできます。
 pip install lxml
 ```
 
-※ pythonで使っているのは **lxml** だけで、それ以外の外部ライブラリは使っていません。
+※ pythonで使う外部ライブラリは **lxml** だけです。
 
 ## 実行方法
 
@@ -96,10 +98,12 @@ JSONファイルは **XBRL-HOME/json** に作られます。
 
 JSONファイルは業種ごとに分かれて保存されます。
 例えば、電気機器関連は **electronics** フォルダーで、小売業は **retail** フォルダーです。
+
 会社と業種の一覧は **XBRL-HOME/data/EDINET/EdinetcodeDlInfo.csv** にあります。
 
 ※ **xbrl_run.py** は同じフォルダーにある **xbrl_reader.py** をマルチプロセスで実行するプログラムです。
-デバッグするときは直接 **xbrl_reader.py** をマルチプロセスで実行すると使いやすいです。
+
+デバッグするときは直接 **xbrl_reader.py** を実行すると使いやすいです。
 
 ```bash
 python xbrl_reader.py
@@ -108,5 +112,6 @@ python xbrl_reader.py
 ## JSONの閲覧方法
 
 **XBRL-HOME/web/index.html** をウェブブラウザで開くと JSONの中身を確認できます。
+
 ※ ajaxでローカルファイルを読むので **Chrome** の場合はローカルサーバーが必要です。
 
