@@ -1335,6 +1335,13 @@ def readCalc(inf):
     
     print('read cal end')
 
+def cased_path(path):
+    abs_path = root_dir + '/web'
+    rel_path = ''
+    for fname in path.lower().split('/'):
+        rel_path += '/' + find(x for x in os.listdir(abs_path + rel_path) if x.lower() == fname )
+
+    return rel_path[1:]
 
 def read_public_doc(inf, category_name, public_doc, reports):
     """XBRLフォルダー内のファイルを読む。
@@ -1446,6 +1453,7 @@ def read_public_doc(inf, category_name, public_doc, reports):
 
     web_path_len = len(root_dir + '/web/')
     htm_paths = [str(x).replace('\\', '/')[web_path_len:] for x in Path(inf.cur_dir).glob("*.htm")]
+    htm_paths = [ cased_path(x) for x in htm_paths ]
 
     # 報告書
     report = Report(end_date, num_submission, ctx_objs, htm_paths)

@@ -184,7 +184,7 @@ function makeReport(){
 function open_report(){
     if(sub_win == undefined || sub_win.closed){
 
-        sub_win = window.open('report.html', 'xbrl-report');
+        sub_win = window.open('./report.html', 'xbrl-report');
 
         if(cur_doc != undefined){
             setTimeout(function(){
@@ -439,7 +439,7 @@ td, th{
                     <select id='category' size="10" onchange="category_changed()" style="width:10em; overflow:auto"></select>
                 </td>
                 <td class="td1" >                    
-                    <select id='edinet_codes' size="10" onchange="edinet_codes_changed()" style="width:20em; overflow:auto">
+                    <select id='edinet_codes' size="10" onchange="edinet_codes_changed()" style="width:20em; overflow:auto; font-family: monospace">
                     </select>
                 </td>
                 <td class="td1" >                    
