@@ -56,7 +56,7 @@ function dsp_type(type_name){
 function tableItem(end_dates, table, obj, nest){
     tab = '&nbsp;'.repeat(4 * nest);
 
-    prefix = (summary ? '' : 'itm:');
+    prefix = (show_name ? 'item:' : '');
     if(obj['type'] == 'stringItemType' || obj['type'] == 'textBlockItemType'){
 
         if(summary && obj['children'].length == 0 && summary_text_items.indexOf(obj['name']) == -1){
@@ -105,7 +105,7 @@ function tableDimension(end_dates, table, obj, nest){
     tab = '&nbsp;'.repeat(4 * nest);
 
     var row = table.insertRow(-1);
-    prefix = (summary ? '' : 'dim:');
+    prefix = (show_name ? 'dimension:' : '');
     addCell(row, tab + prefix + getLabel(obj), undefined, 1 + 1 + end_dates.length);
 
     for(var obj2 of obj['members']){
@@ -119,7 +119,7 @@ function tableObj(end_dates, table, obj, nest){
     if('name' in obj){
 
         var row = table.insertRow(-1);
-        prefix = (summary ? '' : 'mem:');
+        prefix = (show_name ? 'member:' : '');
         addCell(row, tab + prefix + getLabel(obj), undefined, 1 + 1 + end_dates.length);
     }
 

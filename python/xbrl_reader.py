@@ -421,7 +421,7 @@ label_dics: Dict[str, bool] = {}
 inf = Inf()
 
 def check_taxonomy():
-    for date in [ '2013-08-31', '2014-03-31', '2015-03-31', '2016-02-29', '2017-02-28', '2018-02-28' ]:
+    for date in [ '2013-08-31', '2015-03-31', '2016-02-29', '2017-02-28', '2018-02-28' ]: # '2014-03-31'
         xsd_path = '%s/data/EDINET/taxonomy/%s/taxonomy/jppfs/%s/jppfs_cor_%s.xsd' % (root_dir, date, date, date)
         if not os.path.exists(xsd_path):
             print('タクソノミがありません。\n%s' % xsd_path)
