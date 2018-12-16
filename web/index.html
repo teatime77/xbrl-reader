@@ -323,6 +323,7 @@ function on_load(){
 function scale_changed(){
     var idx = document.getElementById('scale').selectedIndex;
     switch(idx){
+        case 0: num_scale = 1; break;
         case 1: num_scale = 1000; break;
         case 2: num_scale = 1000 * 1000; break;
         default: return;
