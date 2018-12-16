@@ -12,6 +12,7 @@
 
 ### python
 - 3.6
+- 3.7
 
 ※ python 3.5では型アノテーションの箇所でエラーになりました。
 
@@ -56,14 +57,14 @@ XBRL-HOME - python
 
 以下のURLからサンプルのXBRLデータをダウンロード後に解凍して、**XBRL-HOME/web/report** の下に入れます。
 
-[http://lang.main.jp/xbrl/18-12-09.zip](http://lang.main.jp/xbrl/18-12-09.zip)
+[http://lang.main.jp/xbrl/sample.zip](http://lang.main.jp/xbrl/sample.zip)
 
 以下のようなになります。
 
 ```bash
 XBRL-HOME - python
           - docs
-          - web  - report - 18-12-09 - Xbrl_Search_20181209_xxxxxx
+          - web  - report - sample - Xbrl_Search_20181209_xxxxxx
                                      - Xbrl_Search_20181209_xxxxxx
                                      - ・・・
           - data - EDINET
