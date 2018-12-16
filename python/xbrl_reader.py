@@ -28,10 +28,6 @@ def read_csv_file(file_name:str, encoding='utf-8'):
         reader = csv.reader(f)
 
         lines = [ x for x in reader ]
-        # header = next(reader)  # ヘッダーを読み飛ばしたい時
-
-        # for row in reader:
-        #     print row          # 1行づつ取得できる
 
     return lines
 
@@ -101,9 +97,6 @@ category_name_dic = {
     '個人（組合発行者を除く）' : 'private_person',
     '個人（非居住者）（組合発行者を除く）' : 'private_person_non_resident',
 }
-
-# for k,v in category_name_dic.items():
-#     print("'%s' : '%s'," % (v,k))
 
 label_role = "http://www.xbrl.org/2003/role/label"
 verboseLabel_role = "http://www.xbrl.org/2003/role/verboseLabel"
@@ -322,10 +315,6 @@ class Item(XbrlNode):
 
         union['text'][idx] = self.text
 
-        if self.schema.type == "monetaryItemType" and self.label == '原材料及び貯蔵品':
-            inf.logf.write('union:%s %s %d %s\n' % (self.label, self.text, idx, period_names[inf.period]))
-            inc_key_cnt(join_cnt, inf.period)
-
         union['children'] = [x.union_item(inf, cnt, idx) for x in self.children]
 
         return union
@@ -337,10 +326,6 @@ class Item(XbrlNode):
         ancestors.append(self)
 
         union['text'][idx] = self.text
-
-        if self.schema.type == "monetaryItemType" and self.label == '原材料及び貯蔵品':
-            inf.logf.write('join:%s %s %s\n' % (self.label, self.text, period_names[self.ctx.period]))
-            inc_key_cnt(join_cnt, self.ctx.period)
 
         union_children = union['children']
         for child in self.children:
@@ -432,10 +417,6 @@ xbrl_basename = None
 
 xsd_dics: Dict[str, SchemaElement] = {}
 label_dics: Dict[str, bool] = {}
-
-dmp_cnt: Dict[str, int] = {}
-ctx_cnt: Dict[str, int] = {}
-join_cnt: Dict[str, int] = {}
 
 inf = Inf()
 
@@ -615,12 +596,6 @@ def setChildren(inf, ctx: ContextNode):
             if sum_item in top_items:
                 item.children.append(sum_item)
                 top_items.remove(sum_item)
-
-        if item.schema.type == "monetaryItemType":
-            name, label, verbose_label = item.schema.getLabel()
-            if label == '原材料及び貯蔵品':
-                inf.logf.write('ctx :%s %s %s\n' % (label, item.text, period_names[ctx.period]))
-                inc_key_cnt(ctx_cnt, ctx.period)
 
     ctx.values = top_items
 
@@ -977,9 +952,6 @@ tag_set = set()
 contextref_set = set()
 attr_set = set()
 
-
-
-
 def prefix_tag(el):
     prefix = el.prefix
     if prefix is not None:
@@ -1102,8 +1074,6 @@ class InlineXbrlParser():
 
         self.inf.pending_items.append((el, text))
 
-
-
     def handle_header(self, el, parent_tag_name):
         tag = prefix_tag(el)
 
@@ -1174,7 +1144,6 @@ class InlineXbrlParser():
         else:
             for child in el:
                 self.handle_tag(child)
-            
 
 
 def read_item(inf, uri, tag_name, context_ref, text):
@@ -1203,12 +1172,6 @@ def read_item(inf, uri, tag_name, context_ref, text):
 
         # ノードの値に項目を追加する。
         node.values.append(item)
-
-        if schema.type == "monetaryItemType":
-            name, label, verbose_label = schema.getLabel()
-            if label == '原材料及び貯蔵品':
-                inf.logf.write('dmp :%s %s %s\n' % (label, text, period_names[node.period]))
-                inc_key_cnt(dmp_cnt, node.period)
 
 
 def process_pending_items(inf):
@@ -1592,10 +1555,6 @@ def readXbrlThread(cpu_count, cpu_id, edinet_code_dic, progress, company_dic):
             # フォルダーがなければ作る。
             os.makedirs(json_dir)
 
-        dmp_cnt.clear()
-        ctx_cnt.clear()
-        join_cnt.clear()
-
         reports = []
 
         # 各XBRLフォルダーに対し
@@ -1648,14 +1607,6 @@ def readXbrlThread(cpu_count, cpu_id, edinet_code_dic, progress, company_dic):
         # JSONデータをファイルに書く。
         with codecs.open('%s/%s.json' % (json_dir, edinet_code), 'w', 'utf-8') as f:
             json.dump(json_data, f, ensure_ascii=False)
-
-        log_dict_cnt(inf, 'dmp ', dmp_cnt)
-        log_dict_cnt(inf, 'ctx ', ctx_cnt)
-        log_dict_cnt(inf, 'join', join_cnt)
-
-        assert len(dmp_cnt) == len(ctx_cnt) and len(dmp_cnt) == len(join_cnt)
-        for k, v in dmp_cnt.items():
-            assert ctx_cnt[k] == v and join_cnt[k] == v
 
     inf.logf.close()
     print('CPU:%d 終了:%d' % (cpu_id, int(time.time() - start_time)))
