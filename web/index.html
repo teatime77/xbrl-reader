@@ -38,7 +38,7 @@ function addCell(row, text, rowspan, colspan){
 }
 
 function getLabel(obj){
-    if(show_name) return obj['name'];
+    if(show_name) return obj['name'] + ':' + obj['context_ref'];
     if(show_label) return obj['label'];
     if(show_verbose_label) return obj['verbose_label'];
 }
@@ -67,11 +67,11 @@ function tableItem(end_dates, table, obj, nest){
         var row = table.insertRow(-1);
         addCell(row, tab + prefix + getLabel(obj), end_dates.length);
         addCell(row, dsp_type(obj['type']), end_dates.length);
-        addCell(row, obj['text'][0], undefined, end_dates.length);
+        addCell(row, obj['texts'][0], undefined, end_dates.length);
 
-        for(var i = 1; i < obj['text'].length; i++){
+        for(var i = 1; i < obj['texts'].length; i++){
             row = table.insertRow(-1);
-            addCell(row, obj['text'][i], undefined, end_dates.length);
+            addCell(row, obj['texts'][i], undefined, end_dates.length);
         }
     }
     else{
@@ -79,7 +79,7 @@ function tableItem(end_dates, table, obj, nest){
         var row = table.insertRow(-1);
         addCell(row, tab + prefix + getLabel(obj));
         addCell(row, dsp_type(obj['type']));
-        for(var x of obj['text']){
+        for(var x of obj['texts']){
             var txt = x;
             if(obj['type'] == 'monetaryItemType' && num_scale != 1){
                 try{
@@ -123,8 +123,8 @@ function tableObj(end_dates, table, obj, nest){
         addCell(row, tab + prefix + getLabel(obj), undefined, 1 + 1 + end_dates.length);
     }
 
-    if('values' in obj && obj['values'].length != 0){
-        for(var item of obj['values']){
+    if('node_items' in obj && obj['node_items'].length != 0){
+        for(var item of obj['node_items']){
             tableItem(end_dates, table, item, nest + 1)
         }
     }
@@ -208,10 +208,9 @@ function makeTable(doc){
     }
 
     // json_data = { 'reports': reports_json, 'xbrl_union': xbrl_union }
-    for(var period_end_dates_union of doc['xbrl_union']){
-        [ period, end_dates, union ] = period_end_dates_union;
+    for(var top_node of doc['top_nodes']){
 
-        if(summary && summary_period_names.indexOf(period) == -1){
+        if(summary && summary_period_names.indexOf(top_node.period) == -1){
             continue;
         }
         if(true){
@@ -219,7 +218,7 @@ function makeTable(doc){
             doc_div.appendChild( document.createElement('hr') );
 
             h1  = document.createElement('h1');
-            h1.innerHTML = period_names[period];
+            h1.innerHTML = period_names[top_node.period];
             doc_div.appendChild(h1);
 
             table = document.createElement('table');
@@ -243,10 +242,9 @@ function makeTable(doc){
             addCell(row, '項目');
             addCell(row, '単位');
 
-            for(var end_date of end_dates){
+            for(var end_date of top_node.end_dates){
                 cell = row.insertCell(-1);
                 cell.innerHTML = end_date;
-
             }
 
             new_tbody = document.createElement('tbody');
@@ -259,7 +257,7 @@ function makeTable(doc){
                 old_tbody.parentNode.replaceChild(new_tbody, old_tbody)
             }
 
-            tableObj(end_dates, table, union, 0)
+            tableObj(top_node.end_dates, table, top_node, 0)
         }
     }
 }

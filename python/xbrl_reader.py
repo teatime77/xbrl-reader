@@ -7,6 +7,7 @@ from lxml import etree
 from pathlib import Path
 import re
 import json
+from json import JSONEncoder
 import codecs
 import threading
 import time
@@ -209,13 +210,6 @@ class XbrlNode:
             self.label         = label
             self.verbose_label = verbose_label
 
-    def copy_name_label(self, union):
-        """nameとlabelをコピーする。
-        """
-        union['name']          = self.name
-        union['label']         = self.label
-        union['verbose_label'] = self.verbose_label
-
 
 class ContextNode(XbrlNode):
     """XBRLのコンテキストのツリー構造の中のノード
@@ -224,119 +218,63 @@ class ContextNode(XbrlNode):
     def __init__(self, schema):
         super().__init__()
 
+        self.id = None
+        self.parent_node = None
         self.period = None
         self.startDate = None
-        self.endDate = None
+        self.end_dates = None
         self.instant = None
         self.dimensions = []
-        self.values = []
+        self.node_items = []
 
         self.set_schema(schema)
 
-    def join_ctx(self, inf, union, cnt, idx):
-        """期間別データに単一期間のノードをセットする。
-        """
-        if self.period is not None:
+    def get_period(self):
+        node = self
+        while node.period is None:
+            node = node.parent_node
+        
+        return node.period
 
-            if 'period' in union:
-                assert union['period'] == self.period
-            else:
-                union['period'] = self.period
-
-        if self.schema is not None:
-            self.copy_name_label(union)
-
-        if len(self.dimensions) != 0:
-
-            if 'dimensions' in union:
-                union_dimensions = union['dimensions']
-            else:
-                union_dimensions = []
-                union['dimensions'] = union_dimensions
-
-            for dimension in self.dimensions:
-
-                union_dimension = findObj(union_dimensions, 'name', dimension.name)
-                if union_dimension is None:
-                    union_dimension = {'members': []}
-                    dimension.copy_name_label(union_dimension)
-                    union_dimensions.append(union_dimension)
-
-                dimension.join_dimension(inf, union_dimension, cnt, idx)
-
-        if len(self.values) != 0:
-
-            if 'values' in union:
-                union_values = union['values']
-                for value in self.values:
-                    union_value = findObj(union_values, 'name', value.name)
-                    if union_value is None:
-                        union_values.append(value.union_item(inf, cnt, idx))
-                    else:
-                        value.joinItem(inf, [], union_value, cnt, idx)
-
-            else:
-                union['values'] = [x.union_item(inf, cnt, idx) for x in self.values]
-
+class Value(XbrlNode):
+    def __init__(self, text: str, end_date: str):
+        super().__init__()
+        self.text = text
+        self.end_date = end_date
 
 class Item(XbrlNode):
     """XBRLインスタンスの中の開示情報の項目 ( 売上高,利益など )
     """
 
-    def __init__(self, ctx: ContextNode, schema: SchemaElement, text: str):
+    def __init__(self, ctx: ContextNode, schema: SchemaElement):
         super().__init__()
         self.ctx = ctx
-        self.text = text
+        self.values = []
         self.children = []
 
         self.set_schema(schema)
 
-        if self.text is None:
-            self.text = 'null-text'
-        else:
-            if self.schema.type == "textBlockItemType":
-                self.text = "省略"
-            elif self.schema.type == 'stringItemType':
-                self.text = self.text.replace('\n', ' ')
+    def to_json(self, inf):
+        period = self.ctx.get_period()
+        end_dates = inf.period_end_dates[period]
+        texts = [None] * len(end_dates)
+        for value in self.values:
+            idx = end_dates.index(value.end_date)
+            texts[idx] = value.text
 
-                if 100 < len(self.text):
-                    self.text = "省略:" + self.text
+        children = [ x.to_json(inf) for x in self.children ]
 
-    def union_item(self, inf, cnt, idx):
-        """期間別データ(期間ごと値を配列に持つオブジェクト)を作る。
-        """
-
-        union = {
-            'type': self.schema.type,
-            'text': [None] * cnt
+        obj = {
+            'name'     : self.name,
+            'label'    : self.label,
+            'verbose_label' : self.verbose_label,
+            'type'     : self.schema.type,
+            'children' : children,
+            'texts'    : texts,
+            'context_ref' : self.ctx.id
         }
 
-        self.copy_name_label(union)
-
-        union['text'][idx] = self.text
-
-        union['children'] = [x.union_item(inf, cnt, idx) for x in self.children]
-
-        return union
-
-    def joinItem(self, inf, ancestors, union, cnt, idx):
-        """期間別データに単一期間のデータをセットする。
-        """
-        assert not self in ancestors
-        ancestors.append(self)
-
-        union['text'][idx] = self.text
-
-        union_children = union['children']
-        for child in self.children:
-            union_child = findObj(union_children, 'name', child.name)
-            if union_child is None:
-                union_children.append(child.union_item(inf, cnt, idx))
-            else:
-                child.joinItem(inf, ancestors, union_child, cnt, idx)
-
-        ancestors.pop()
-
+        return obj
 
 class Dimension(XbrlNode):
     """ディメンション軸
@@ -352,22 +290,25 @@ class Dimension(XbrlNode):
 
         self.set_schema(schema)
 
-    def join_dimension(self, inf, union_dimension: dict, cnt: int, idx: int):
-        """期間別データに軸のデータをセットする。
-        """
-        assert 'name' in union_dimension
-        assert union_dimension['name'] == self.name
-        assert 'members' in union_dimension
+class MyJSONEncoder(JSONEncoder):
+    def default(self, o):
+        if isinstance(o, XbrlNode):
 
-        union_members = union_dimension['members']
-        for member in self.members:
-            union_member = findObj(union_members, 'name', member.name)
-            if union_member is None:
-                union_member = {}
-                member.copy_name_label(union_member)
-                union_members.append(union_member)
+            if isinstance(o, Item):
+                return o.to_json(current_inf)
 
-            member.join_ctx(inf, union_member, cnt, idx)
+            else:
+
+                dic = dict( o.__dict__ )
+
+                for key in [ 'schema', 'ctx', 'parent_node' ]:
+                    if key in dic:
+                        del dic[key]
+
+
+                return dic
+            
+        return super(MyJSONEncoder, self).default(o)
 
 
 class Calc:
@@ -393,13 +334,12 @@ class Report:
 
 class Inf:
     __slots__ = ['cpu_count', 'cpu_id', 'cur_dir', 'local_node_dic', 'local_top_context_nodes', 'local_ns_dic',
-                 'local_xsd_dics', 'local_uri2path', 'local_xsd_uri2path', 'logf', 'progress', 'period', 'parser', 'pending_items' ]
+                 'local_xsd_dics', 'local_uri2path', 'local_xsd_uri2path', 'logf', 'progress', 'parser', 'pending_items', 'end_date', 'period_end_dates' ]
 
     def __init__(self):
         self.cur_dir = None
         self.local_xsd_uri2path = None
         self.local_xsd_dics = None
-        self.period = None
         self.pending_items = []
 
 start_time = time.time()
@@ -419,6 +359,7 @@ xsd_dics: Dict[str, SchemaElement] = {}
 label_dics: Dict[str, bool] = {}
 
 inf = Inf()
+current_inf = inf
 
 def check_taxonomy():
     for date in [ '2013-08-31', '2015-03-31', '2016-02-29', '2017-02-28', '2018-02-28' ]: # '2014-03-31'
@@ -580,24 +521,24 @@ def setChildren(inf, ctx: ContextNode):
             for member in dimension.members:
                 setChildren(inf, member)
 
-    if len(ctx.values) == 0:
+    if len(ctx.node_items) == 0:
         return
 
-    top_items = list(ctx.values)
-    for item in ctx.values:
+    top_items = list(ctx.node_items)
+    for item in ctx.node_items:
 
         if not item.schema.sorted:
             item.schema.sorted = True
             item.schema.calcTo = sorted(item.schema.calcTo, key=lambda x: x.order)
 
         child_elements = [x.to for x in item.schema.calcTo]
-        sum_items = [x for x in ctx.values if x.schema in child_elements]
+        sum_items = [x for x in ctx.node_items if x.schema in child_elements]
         for sum_item in sum_items:
             if sum_item in top_items:
                 item.children.append(sum_item)
                 top_items.remove(sum_item)
 
-    ctx.values = top_items
+    ctx.node_items = top_items
 
 
 def readCalcArcs(xsd_dic, locs, arcs):
@@ -779,7 +720,8 @@ def makeContextNode(inf, ctx):
     """
 
     id = ctx.id
-    if len(ctx.dimension_schemas) == 0:
+    dimension_len = len(ctx.dimension_schemas)
+    if dimension_len == 0:
         # 次元がない場合
 
         assert id in period_names
@@ -800,6 +742,21 @@ def makeContextNode(inf, ctx):
         assert period_name in period_names
         ctx.period = period_name
 
+        if 2 <= dimension_len:
+            # 2次元以上の場合
+
+            for i in range(dimension_len):
+                if ctx.dimension_schemas[i].name == 'ConsolidatedOrNonConsolidatedAxis':
+                    if i != 0:
+                        dimension = ctx.dimension_schemas.pop(i)
+                        member = ctx.member_schemas.pop(i)
+
+                        ctx.dimension_schemas.insert(0, dimension)
+                        ctx.member_schemas.insert(0, member)
+
+                    break
+
+
     # ツリー構造のトップノードの中で期間が同じものを探す。
     node = find(x for x in inf.local_top_context_nodes if x.period == ctx.period)
     if node is None:
@@ -809,7 +766,6 @@ def makeContextNode(inf, ctx):
         node = ContextNode(None)
         node.period = ctx.period
         node.startDate = ctx.startDate
-        node.endDate = ctx.endDate
         node.instant = ctx.instant
 
         # トップノードのリストに追加する。
@@ -840,11 +796,14 @@ def makeContextNode(inf, ctx):
             leaf_node.period = ctx.period
             dimension.members.append(leaf_node)
 
+        leaf_node.parent_node = node
         node = leaf_node
 
     # ノードの辞書に追加する。
     assert not id in inf.local_node_dic
     inf.local_node_dic[id] = node
+    node.id = id
+
 
 
 def make_local_ns_dic(inf, path):
@@ -1094,14 +1053,17 @@ class InlineXbrlParser():
             assert parent_tag_name == 'ix:resources'
 
         elif tag == "xbrli:context":
-            # コンテキストを作る。
-            ctx = Context( el.attrib['id'] )
 
-            for child in el:
-                self.handle_context(ctx, child, tag)
+            if not el.attrib['id'] in self.inf.local_node_dic:
 
-            # Contextに対応するContextNodeを作る。
-            makeContextNode(self.inf, ctx)
+                # コンテキストを作る。
+                ctx = Context( el.attrib['id'] )
+
+                for child in el:
+                    self.handle_context(ctx, child, tag)
+
+                # Contextに対応するContextNodeを作る。
+                makeContextNode(self.inf, ctx)
 
             return
 
@@ -1145,7 +1107,6 @@ class InlineXbrlParser():
             for child in el:
                 self.handle_tag(child)
 
-
 def read_item(inf, uri, tag_name, context_ref, text):
 
     # 指定されたURIと名前からスキーマ要素を得る。
@@ -1167,11 +1128,44 @@ def read_item(inf, uri, tag_name, context_ref, text):
         assert context_ref in inf.local_node_dic
         node = inf.local_node_dic[context_ref]
 
-        # XBRLインスタンスの中の開示情報の項目を作る。
-        item = Item(node, schema, text)
+        period = node.get_period()
+        if not period in inf.period_end_dates:
+            inf.period_end_dates[period] = [ inf.end_date ]
+        else:
+            end_dates = inf.period_end_dates[period]
+            if not inf.end_date in end_dates:
+                end_dates.append(inf.end_date)
 
-        # ノードの値に項目を追加する。
-        node.values.append(item)
+
+        if text is None:
+            text = 'null-text'
+        else:
+            if schema.type == "textBlockItemType":
+                text = "省略"
+            elif schema.type == 'stringItemType':
+                text = text.replace('\n', ' ')
+
+                if 100 < len(text):
+                    text = "省略:" + text
+
+        value = Value(text, inf.end_date)
+
+        item = find(x for x in node.node_items if x.name == schema.name)
+        if item is None:
+
+            # XBRLインスタンスの中の開示情報の項目を作る。
+            item = Item(node, schema)
+            item.values.append(value)
+
+            # ノードの値に項目を追加する。
+            node.node_items.append(item)
+
+        value2 = find(x for x in item.values if x.end_date == inf.end_date)
+        if value2 is None:
+
+            item.values.append(value)
+        else:
+            assert value2.text == text
 
 
 def process_pending_items(inf):
@@ -1208,18 +1202,22 @@ def read_xbrl(inf, el: ET.Element):
 
     if uri == "http://www.xbrl.org/2003/instance" and tag_name == "context":
 
-        # コンテキストを作る。
-        ctx = Context(id)
+        if not id in inf.local_node_dic:
 
-        # コンテキストの情報を得る。
-        readContext(inf, el, None, ctx)
+            # コンテキストを作る。
+            ctx = Context(id)
 
-        # Contextに対応するContextNodeを作る。
-        makeContextNode(inf, ctx)
+            # コンテキストの情報を得る。
+            readContext(inf, el, None, ctx)
+
+            # Contextに対応するContextNodeを作る。
+            makeContextNode(inf, ctx)
         return
 
     # if uri in [ "http://www.xbrl.org/2003/instance", "http://www.xbrl.org/2003/linkbase" ]:
     if uri in ["http://www.xbrl.org/2003/linkbase"]:
+        pass
+    elif 'unitRef' in el.attrib and el.attrib['unitRef'] == 'USD':
         pass
     else:
 
@@ -1321,6 +1319,8 @@ def read_public_doc(inf, category_name, public_doc, reports):
     # if xbrl_basename != 'jpcrp040300-q2r-001_E03369-000_2016-09-30_01_2016-11-14.xbrl':
     #     continue
 
+    inf.end_date = xbrl_basename.split('_')[2]
+
     xbrl_idx += 1
     inf.progress[inf.cpu_id] = xbrl_idx
     if xbrl_idx % 100 == 0:
@@ -1332,9 +1332,6 @@ def read_public_doc(inf, category_name, public_doc, reports):
 
     inf.cur_dir = os.path.dirname(xbrl_path).replace('\\', '/')
     # print('^^', inf.cur_dir)
-
-    inf.local_node_dic = {}
-    inf.local_top_context_nodes = []
 
     inf.local_ns_dic = {}
     inf.local_xsd_dics = {}
@@ -1403,40 +1400,12 @@ def read_public_doc(inf, category_name, public_doc, reports):
         # XBRLファイルの内容を読む。
         read_xbrl(inf, ET.parse(xbrl_path).getroot())
 
-    for ctx in inf.local_top_context_nodes:
-        setChildren(inf, ctx)
-
-    ctx_objs = list(inf.local_top_context_nodes)
-
-    dt1 = next(x for x in ctx_objs if x.period == 'FilingDateInstant')  # 提出日時点
-
-    end_date = [x for x in dt1.values if x.name == 'CurrentPeriodEndDateDEI'][0].text  # 当会計期間終了日
-    num_submission = next(x for x in dt1.values if x.name == 'NumberOfSubmissionDEI').text  # 提出回数
-    document_type = next(x for x in dt1.values if x.name == 'DocumentTypeDEI').text  # 様式
-
     web_path_len = len(root_dir + '/web/')
     htm_paths = [str(x).replace('\\', '/')[web_path_len:] for x in Path(inf.cur_dir).glob("*.htm")]
     htm_paths = [ cased_path(x) for x in htm_paths ]
 
     # 報告書
-    report = Report(end_date, num_submission, ctx_objs, htm_paths)
-
-    # 当会計期間終了日が同じ報告書のリスト ( 訂正報告書の場合 )
-    revisions = [x for x in reports if x.end_date == end_date]
-    if any(revisions):
-        # 当会計期間終了日が同じ報告書がある場合
-
-        report2 = revisions[0]
-        if True or report2.num_submission < num_submission:
-            # 提出回数の値が大きい場合
-
-            # json_str_list.remove(x)
-            reports.append(report)
-
-    else:
-        # 当会計期間終了日が同じ報告書がない場合
-
-        reports.append(report)
+    reports.append( { 'end_date':inf.end_date, 'htm_paths':htm_paths } )
 
 
 def make_public_docs_list(cpu_count, company_dic):
@@ -1464,6 +1433,11 @@ def make_public_docs_list(cpu_count, company_dic):
         # 'jpcrp040300-q2r-001_E03739-000_2017-09-30_01_2017-11-14.xbrl'
         xbrl_path_0_basename = os.path.basename(str(xbrl_path_0))
 
+        root_name, ext = os.path.splitext(xbrl_path_0_basename)
+
+        items = root_name.split('_')
+        end_date, filing_date = items[2], items[4]
+
         # ファイル名を'-'と'_'で区切る。
         items = re.split('[-_]', xbrl_path_0_basename)
 
@@ -1482,11 +1456,18 @@ def make_public_docs_list(cpu_count, company_dic):
         if edinet_code in edinet_code_dic:
             # このEDINETコードがすでに辞書にある場合
 
-            edinet_code_dic[edinet_code].append(public_doc)
+            end_date_dic = edinet_code_dic[edinet_code]
+            if end_date in end_date_dic and filing_date < end_date_dic[end_date][0]:
+                # 終了日が同じで提出日が新しいデータがある場合
+
+                continue
+
+            end_date_dic[end_date] = (filing_date, public_doc)
+
         else:
             # このEDINETコードが辞書にない場合
 
-            edinet_code_dic[edinet_code] = [ public_doc ]
+            edinet_code_dic[edinet_code] = { end_date : (filing_date, public_doc) }
 
 
         # カテゴリー名
@@ -1510,6 +1491,8 @@ def make_public_docs_list(cpu_count, company_dic):
 
                 companies.append( company_obj )
 
+        for category in category_companies:
+            category['companies'] = sorted(category['companies'], key=lambda x: x['company_name'])
 
     # JSONを入れるフォルダー
     json_dir = root_dir + "/web/json"
@@ -1530,12 +1513,13 @@ def make_public_docs_list(cpu_count, company_dic):
     # 各CPUごとの、EDINETコード別のXBRLフォルダーの辞書を返す。
     return public_docs_list
 
-
 def readXbrlThread(cpu_count, cpu_id, edinet_code_dic, progress, company_dic):
     """スレッドのメイン処理
     """
+    global current_inf
 
     inf = Inf()
+    current_inf = inf
 
     inf.cpu_count = cpu_count
     inf.cpu_id = cpu_id
@@ -1544,7 +1528,9 @@ def readXbrlThread(cpu_count, cpu_id, edinet_code_dic, progress, company_dic):
     inf.parser = InlineXbrlParser(inf)
 
     # EDINETコードとXBRLフォルダーのリストに対し
-    for edinet_code, public_docs in edinet_code_dic.items():
+    for edinet_code, end_date_dic in edinet_code_dic.items():
+
+        public_docs = [ x[1] for x in end_date_dic.values() ]
 
         category_name = company_dic[edinet_code]['category_name']
 
@@ -1556,6 +1542,9 @@ def readXbrlThread(cpu_count, cpu_id, edinet_code_dic, progress, company_dic):
             os.makedirs(json_dir)
 
         reports = []
+        inf.local_top_context_nodes = []
+        inf.local_node_dic = {}
+        inf.period_end_dates = {}
 
         # 各XBRLフォルダーに対し
         for public_doc in public_docs:
@@ -1563,50 +1552,26 @@ def readXbrlThread(cpu_count, cpu_id, edinet_code_dic, progress, company_dic):
             # XBRLフォルダー内のファイルを読む。
             read_public_doc(inf, category_name, public_doc, reports)
 
-        accountings = list(set(value.text  for report in reports for obj in report.ctx_objs if obj.period == 'FilingDateInstant' for value in obj.values if value.name == 'AccountingStandardsDEI' ))
-        if len(accountings) != 1 or accountings[0] != 'Japan GAAP':
-            company_name = find(value.text  for obj in reports[0].ctx_objs if obj.period == 'FilingDateInstant' for value in obj.values if value.name == 'CompanyNameCoverPage' )
-            print(company_name, accountings, public_docs[0].parent.parent.parent)
-            # continue
+        for ctx in inf.local_top_context_nodes:
+            setChildren(inf, ctx)
 
         # 当会計期間終了日でソートする。
-        reports = sorted(reports, key=lambda x: x.end_date)
-
-        # 当会計期間終了日とでソートする。
-        end_date_objs_dic = {}
-        for report in reports:
-
-            # 各期間のデータに対し
-            for obj in report.ctx_objs:
-
-                if obj.period in end_date_objs_dic:
-                    end_date_objs_dic[obj.period].append((report.end_date, obj))
-                else:
-                    end_date_objs_dic[obj.period] = [(report.end_date, obj)]
-
-        # 期間別にXBRLデータを結合する。
-        xbrl_union = []
-        for period, end_date_objs in end_date_objs_dic.items():
-            inf.period = period
-            union = {}
-            end_dates = []
-            for idx, (end_date, obj) in enumerate(end_date_objs):
-                end_dates.append(end_date)
-                obj.join_ctx(inf, union, len(end_date_objs), idx)
-
-            xbrl_union.append((period, end_dates, union))
+        reports = sorted(reports, key=lambda x: x['end_date'])
 
         # period_names_orderの期間名の順に並べ替える。
-        xbrl_union = sorted(xbrl_union, key=lambda x: period_names_order.index(x[0]))
+        inf.local_top_context_nodes = sorted(inf.local_top_context_nodes, key=lambda x: period_names_order.index(x.period))
 
-        reports_json = [ { 'end_date':x.end_date, 'htm_paths':x.htm_paths } for x in reports ]
+        top_nodes = [ x for x in inf.local_top_context_nodes if x.period in inf.period_end_dates ]
+
+        for top_node in top_nodes:
+            top_node.end_dates = inf.period_end_dates[top_node.period]
 
         # JSONデータを作る。
-        json_data = { 'reports': reports_json, 'xbrl_union': xbrl_union }
+        json_data = { 'reports': reports, 'top_nodes': top_nodes, 'version': '1.1' }
 
         # JSONデータをファイルに書く。
         with codecs.open('%s/%s.json' % (json_dir, edinet_code), 'w', 'utf-8') as f:
-            json.dump(json_data, f, ensure_ascii=False)
+            json.dump(json_data, f, ensure_ascii=False, cls=MyJSONEncoder)
 
     inf.logf.close()
     print('CPU:%d 終了:%d' % (cpu_id, int(time.time() - start_time)))
