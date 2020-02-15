@@ -224,7 +224,7 @@ class ContextNode(XbrlNode):
         self.startDate = None
         self.end_dates = None
         self.instant = None
-        self.dimensions = []
+        self.dimensions = [] # type: List[Dimension]
         self.node_items = []
 
         self.set_schema(schema)
@@ -279,6 +279,8 @@ class Item(XbrlNode):
 class Dimension(XbrlNode):
     """ディメンション軸
     """
+
+    members : List[ContextNode]
 
     def __init__(self, schema, name, label, verbose_label):
         super().__init__()
@@ -362,7 +364,7 @@ inf = Inf()
 current_inf = inf
 
 def check_taxonomy():
-    for date in [ '2013-08-31', '2015-03-31', '2016-02-29', '2017-02-28', '2018-02-28' ]: # '2014-03-31'
+    for date in [ '2013-08-31', '2015-03-31', '2016-02-29', '2017-02-28', '2018-02-28', '2019-11-01' ]: # '2014-03-31'
         xsd_path = '%s/data/EDINET/taxonomy/%s/taxonomy/jppfs/%s/jppfs_cor_%s.xsd' % (root_dir, date, date, date)
         if not os.path.exists(xsd_path):
             print('タクソノミがありません。\n%s' % xsd_path)
@@ -375,7 +377,7 @@ def read_company_dic():
     # 最初の2行の見出しは取り除く。
     lines = lines[2:]
 
-    company_dic = dict( (x[0], { 'company_name':x[6], 'category_name': category_name_dic[x[10]] } ) for x in lines if 11 <= len(x) )
+    company_dic = dict( (x[0], { 'listing':x[2], 'company_name':x[6], 'category_name_jp': x[10], 'category_name': category_name_dic[x[10]] } ) for x in lines if 11 <= len(x) )
 
     return company_dic
 
@@ -715,7 +717,7 @@ def readContext(inf, el: ET.Element, parent_tag_name, ctx: Context):
         readContext(inf, child, tag_name, ctx)
 
 
-def makeContextNode(inf, ctx):
+def makeContextNode(inf, ctx: Context):
     """Contextに対応するContextNodeを作る。
     """
 
@@ -745,12 +747,16 @@ def makeContextNode(inf, ctx):
         if 2 <= dimension_len:
             # 2次元以上の場合
 
+            # 'ConsolidatedOrNonConsolidatedAxis'が最初の次元になるようにする。
             for i in range(dimension_len):
                 if ctx.dimension_schemas[i].name == 'ConsolidatedOrNonConsolidatedAxis':
                     if i != 0:
+                        # 最初の次元でない場合
+
                         dimension = ctx.dimension_schemas.pop(i)
                         member = ctx.member_schemas.pop(i)
 
+                        # 最初の次元にする。
                         ctx.dimension_schemas.insert(0, dimension)
                         ctx.member_schemas.insert(0, member)
 
@@ -1107,7 +1113,7 @@ class InlineXbrlParser():
             for child in el:
                 self.handle_tag(child)
 
-def read_item(inf, uri, tag_name, context_ref, text):
+def read_item(inf, uri, tag_name, context_ref: str, text):
 
     # 指定されたURIと名前からスキーマ要素を得る。
     schema : SchemaElement = get_schema_element(inf, uri, tag_name)
