@@ -540,15 +540,16 @@ def extract_xbrl():
     print("合計 : %d" % cnt)
 
 context_refs = [ "FilingDateInstant", "CurrentYearInstant", "CurrentYearInstant_NonConsolidatedMember", "CurrentYearDuration", "CurrentYearDuration_NonConsolidatedMember", "CurrentQuarterInstant", "CurrentQuarterInstant_NonConsolidatedMember", "CurrentYTDDuration", "CurrentYTDDuration_NonConsolidatedMember", "InterimInstant", "InterimInstant_NonConsolidatedMember", "InterimDuration", "InterimDuration_NonConsolidatedMember"  ]
+CurrentPeriodEndDate_dic = {}
 
-def xbrl_test(values, vloc, vcnt, vifrs, vusgaap, el: ET.Element):
+def xbrl_test(edinetCode, values, vloc, vcnt, vifrs, vusgaap, el: ET.Element):
     """XBRLファイルの内容を読む。
     """
     id, uri, tag_name, text = parseElement(el)        
 
     if tag_name == "xbrl":
         for child in el:
-            xbrl_test(values, vloc, vcnt, vifrs, vusgaap, child)
+            xbrl_test(edinetCode, values, vloc, vcnt, vifrs, vusgaap, child)
         return
 
     if text is None:
@@ -576,8 +577,19 @@ def xbrl_test(values, vloc, vcnt, vifrs, vusgaap, el: ET.Element):
     id = "%s:%s" % (ns, tag_name)
     if id in account_dic:
         values[account_dic[id]] = text
-    
+        # 報告書インスタンス 作成ガイドライン
+        #   5-6-2 数値を表現する要素
+        
+        if id == "jpdei_cor:CurrentPeriodEndDateDEI":
+            key = edinetCode + '\t' + text
+            if key in CurrentPeriodEndDate_dic:
 
+                print("当会計期間終了日 %s %s" % (edinetCode, text))
+            else:
+                CurrentPeriodEndDate_dic[key] = text
+
+
+    
     name = '"%s:%s", # %s %s %s' % (ns, tag_name, ele.label, ele.verbose_label, ele.type)
     # name = context_ref
 
@@ -716,7 +728,7 @@ def test_main():
 
         vloc  = [ Counter() for _ in context_refs ]
         values = [""] * len(account_ids)
-        xbrl_test(values, vloc, vcnt, vifrs, vusgaap, root)
+        xbrl_test(edinetCode, values, vloc, vcnt, vifrs, vusgaap, root)
         csv_f.write("%s\n" % ",".join(values) )
 
         if sum(len(x) for x in vloc) == 0:
