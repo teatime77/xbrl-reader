@@ -10,6 +10,7 @@ import zipfile
 import xml.etree.ElementTree as ET
 import time
 import re
+import random
 from typing import Dict, List, Any
 from collections import OrderedDict
 
@@ -295,8 +296,8 @@ def read_jppfs_cor(el: ET.Element):
 
 def get_xbrl_zip_bin():
     xbrl = re.compile('XBRL/PublicDoc/jpcrp[-_0-9a-zA-Z]+\.xbrl')
-    for zip_path_obj in Path(docs_path).glob("**/*.zip"):
-        zip_path = str(zip_path_obj)
+
+    for _, _, zip_path in get_zip_path():
 
         try:
             with zipfile.ZipFile(zip_path) as zf:
@@ -341,30 +342,36 @@ def check_zip_file(zip_path: str):
     except zipfile.BadZipFile:
         return False
 
-def download_docs(yyyymmdd, day_path, body, retry):
+def download_check_zip_file(yyyymmdd, doc, dst_path):
+    if os.path.exists(dst_path) and check_zip_file(dst_path):
+        return
+
+    company = company_dic[edinetCode]
+
+    print("%s | %s | %s | %s | %s" % (yyyymmdd, doc['filerName'], doc['docDescription'], company['listing'], company['category_name']))
+
+    url = "https://disclosure.edinet-fsa.go.jp/api/v1/documents/%s?type=1" % doc['docID']
+    download_file(url, dst_path)
+
+    if not check_zip_file(dst_path):
+        print("!!!!!!!!!! ERROR !!!!!!!!!!\n" * 10)
+        time.sleep(10)
+
+    time.sleep(1)
+
+def download_docs(yyyymmdd, day_path, body):
     for doc in body['results']:   
         docTypeCode = doc['docTypeCode']
-        if docTypeCode in [ '120', '130', '140', '150', '160', '170' ]:
+        if docTypeCode in [ '120', '130', '140', '150', '160', '170' ] and doc['docInfoEditStatus'] == "0":
             edinetCode = doc['edinetCode']
             if edinetCode in company_dic:
                 company = company_dic[edinetCode]
                 if company['listing'] == '上場':
 
-                    dst_path = "%s/%s-%s.zip" % (day_path, edinetCode, docTypeCode)
+                    old_path = "%s/%s-%s.zip" % (day_path, edinetCode, docTypeCode)
+                    dst_path = "%s/%s-%s-%d.zip" % (day_path, edinetCode, docTypeCode, doc['seqNumber'])
 
-                    if os.path.exists(dst_path) and check_zip_file(dst_path):
-                        continue
-
-                    print("%s | %s | %s | %s | %s" % (yyyymmdd, doc['filerName'], doc['docDescription'], company['listing'], company['category_name']))
-
-                    url = "https://disclosure.edinet-fsa.go.jp/api/v1/documents/%s?type=1" % doc['docID']
-                    download_file(url, dst_path)
-
-                    if not check_zip_file(dst_path):
-                        print("!!!!!!!!!! ERROR !!!!!!!!!!\n" * 10)
-                        time.sleep(10)
-
-                    time.sleep(1)
+                    yield [ doc, docTypeCode, edinetCode, company, old_path, dst_path ]
 
 def get_xbrl_docs():
     dt1 = None
@@ -390,9 +397,10 @@ def get_xbrl_docs():
         body = getDocList(day_path, url)
         time.sleep(1)
 
-        download_docs(yyyymmdd, day_path, body, False)
+        for doc, dst_path in download_docs(yyyymmdd, day_path, body):
+            download_check_zip_file(yyyymmdd, doc, dst_path)
 
-def retry_get_xbrl_docs():
+def get_zip_path():
     for json_path_obj in Path(docs_path).glob("**/docs.json"):
         json_path = str(json_path_obj)
 
@@ -403,7 +411,13 @@ def retry_get_xbrl_docs():
         with codecs.open(json_path, 'r', 'utf-8') as f:
             body = json.load(f)
 
-        download_docs(yyyymmdd, day_path, body, True)
+        for doc, docTypeCode, edinetCode, company, old_path, dst_path in download_docs(yyyymmdd, day_path, body):
+            yield [yyyymmdd, doc, old_path, dst_path]
+
+def retry_get_xbrl_docs():
+    for yyyymmdd, doc, dst_path in get_zip_path():
+        download_check_zip_file(yyyymmdd, doc, dst_path)
+
 
 def ReadAllSchema(log_f):
     inf = Inf()
@@ -761,6 +775,36 @@ if __name__ == '__main__':
 
         elif args[1] == "retry":
             retry_get_xbrl_docs()
+
+        elif args[1] == "rename":
+            dic = {}
+            for yyyymmdd, doc, old_path, dst_path in get_zip_path():
+                assert not (dst_path in dic)
+                if os.path.exists(old_path):
+                    os.rename(old_path, dst_path)
+
+                dic[dst_path] = dst_path
+
+                if random.random() < 0.001:
+                    print(doc['filerName'])
+
+            print("rename")
+
+        elif args[1] == "test-1":
+            cc = 0
+            for yyyymmdd, doc, dst_path in get_zip_path():
+                if doc['periodEnd'] is None:
+                    print("")
+                    print(doc)
+                    cc += 1
+                else:
+                    assert len(doc['periodEnd']) == 10
+
+                if random.random() < 0.001:
+                    print(doc['periodEnd'])
+
+            print("訂正数 : %d" % cc)
+
 
         elif args[1] == "test":
             test_main()
