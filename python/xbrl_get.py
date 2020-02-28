@@ -299,6 +299,10 @@ def get_xbrl_zip_bin():
 
     for _, _, zip_path in get_zip_path():
 
+        if not os.path.exists(zip_path):
+            print("no file:%s" % zip_path)
+            continue
+
         try:
             with zipfile.ZipFile(zip_path) as zf:
                 xbrl_file = find(x for x in zf.namelist() if xbrl.match(x))
@@ -368,10 +372,9 @@ def download_docs(yyyymmdd, day_path, body):
                 company = company_dic[edinetCode]
                 if company['listing'] == '上場':
 
-                    old_path = "%s/%s-%s.zip" % (day_path, edinetCode, docTypeCode)
                     dst_path = "%s/%s-%s-%d.zip" % (day_path, edinetCode, docTypeCode, doc['seqNumber'])
 
-                    yield [ doc, docTypeCode, edinetCode, company, old_path, dst_path ]
+                    yield [ doc, docTypeCode, edinetCode, company, dst_path ]
 
 def get_xbrl_docs():
     dt1 = None
@@ -411,8 +414,8 @@ def get_zip_path():
         with codecs.open(json_path, 'r', 'utf-8') as f:
             body = json.load(f)
 
-        for doc, docTypeCode, edinetCode, company, old_path, dst_path in download_docs(yyyymmdd, day_path, body):
-            yield [yyyymmdd, doc, old_path, dst_path]
+        for doc, docTypeCode, edinetCode, company, dst_path in download_docs(yyyymmdd, day_path, body):
+            yield [yyyymmdd, doc, dst_path]
 
 def retry_get_xbrl_docs():
     for yyyymmdd, doc, dst_path in get_zip_path():
@@ -703,9 +706,6 @@ def test_main():
 
     csv_f.write("%s\n" % ",".join(titles) )
 
-
-
-
     label_dic, verbose_label_dic = read_label()
     accounts = readAccounts()
     vcnt1 = [ Counter() for _ in context_refs ]
@@ -775,36 +775,6 @@ if __name__ == '__main__':
 
         elif args[1] == "retry":
             retry_get_xbrl_docs()
-
-        elif args[1] == "rename":
-            dic = {}
-            for yyyymmdd, doc, old_path, dst_path in get_zip_path():
-                assert not (dst_path in dic)
-                if os.path.exists(old_path):
-                    os.rename(old_path, dst_path)
-
-                dic[dst_path] = dst_path
-
-                if random.random() < 0.001:
-                    print(doc['filerName'])
-
-            print("rename")
-
-        elif args[1] == "test-1":
-            cc = 0
-            for yyyymmdd, doc, dst_path in get_zip_path():
-                if doc['periodEnd'] is None:
-                    print("")
-                    print(doc)
-                    cc += 1
-                else:
-                    assert len(doc['periodEnd']) == 10
-
-                if random.random() < 0.001:
-                    print(doc['periodEnd'])
-
-            print("訂正数 : %d" % cc)
-
 
         elif args[1] == "test":
             test_main()
