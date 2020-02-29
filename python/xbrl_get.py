@@ -140,10 +140,15 @@ def readAccounts():
 
     return accounts
 
-def get_xbrl_zip_bin():
+def get_xbrl_zip_bin(cpu_count, cpu_id):
     xbrl = re.compile('XBRL/PublicDoc/jpcrp[-_0-9a-zA-Z]+\.xbrl')
 
     for _, _, zip_path in get_zip_path():
+
+        edinetCode = os.path.basename(zip_path).split('-')[0]
+        assert edinetCode[0] == 'E'
+        if int(edinetCode[1:]) % cpu_count != cpu_id:
+            continue
 
         if not os.path.exists(zip_path):
             print("no file:%s" % zip_path)

@@ -11,14 +11,18 @@ import xml.etree.ElementTree as ET
 import time
 import re
 import random
+import pickle
 from typing import Dict, List, Any
 from collections import OrderedDict
+import multiprocessing
+from multiprocessing import Process, Array
 
-from xbrl_reader import Inf, SchemaElement, ReadSchema, ReadLabel, parseElement, read_company_dic, getAttribs, label_role, verboseLabel_role
+from xbrl_reader import Inf, SchemaElement, read_lines, ReadSchema, ReadLabel, parseElement, read_company_dic, getAttribs, label_role, verboseLabel_role
 from xbrl_reader import readCalcSub, readCalcArcs
 from xbrl_get import company_dic, get_xbrl_zip_bin
 from xbrl_table import account_ids
 
+start_time = time.time()
 context_refs = [ "FilingDateInstant", "CurrentYearInstant", "CurrentYearInstant_NonConsolidatedMember", "CurrentYearDuration", "CurrentYearDuration_NonConsolidatedMember", "CurrentQuarterInstant", "CurrentQuarterInstant_NonConsolidatedMember", "CurrentYTDDuration", "CurrentYTDDuration_NonConsolidatedMember", "InterimInstant", "InterimInstant_NonConsolidatedMember", "InterimDuration", "InterimDuration_NonConsolidatedMember"  ]
 account_dic = {}
 ns_xsd_dic = {}
@@ -26,8 +30,8 @@ ns_xsd_dic = {}
 root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__))).replace('\\', '/')
 data_path = root_dir + '/python/data'
 
-def get_xbrl_zip_root():
-    for xbrl_file_name, xml_bin in get_xbrl_zip_bin():
+def get_xbrl_zip_root(cpu_count, cpu_id):
+    for xbrl_file_name, xml_bin in get_xbrl_zip_bin(cpu_count, cpu_id):
         xml_text = xml_bin.decode('utf-8')
         root = ET.fromstring(xml_text)
 
@@ -175,11 +179,16 @@ def print_context_freq(log_f, vcnt):
 
     log_f.write("\n")
 
-def make_csv():
-    with codecs.open(data_path + "/schema.txt", 'w', 'utf-8') as log_f:
-        ReadAllSchema(log_f)
+def make_csv(cpu_count, cpu_id, ns_xsd_dic_arg):
+    global ns_xsd_dic
 
-    csv_f = codecs.open(data_path + "/report.csv", 'w', 'utf-8')
+    for key, dict in ns_xsd_dic_arg.items():
+        ns_xsd_dic[key] = dict
+
+    # ns_xsd_dic = ns_xsd_dic_arg
+    print("cpu:%d dic:%d" % (cpu_id, len(ns_xsd_dic)))
+
+    csv_f = codecs.open("%s/report-%d.csv" % (data_path, cpu_id), 'w', 'utf-8')
 
     titles = make_titles()
     csv_f.write("%s\n" % ",".join(titles) )
@@ -191,7 +200,7 @@ def make_csv():
     vusgaap = [ Counter() for _ in context_refs ]
 
     cnt = 0
-    for xbrl_file_name, root in get_xbrl_zip_root():
+    for xbrl_file_name, root in get_xbrl_zip_root(cpu_count, cpu_id):
         v1 = xbrl_file_name.split('_')
         if v1[3] != "01":
             # 訂正の場合
@@ -201,6 +210,10 @@ def make_csv():
         edinetCode = v1[1].split('-')[0]
         if not edinetCode in company_dic:
             continue
+
+        # if int(edinetCode[1:]) % cpu_count != cpu_id:
+        #     continue
+
         company = company_dic[edinetCode]
         if company['category_name_jp'] in ["保険業", "その他金融業", "証券、商品先物取引業", "銀行業"]:
             continue
@@ -226,8 +239,8 @@ def make_csv():
 
         cnt += 1
         if cnt % 1000 == 0:
-            print(cnt)
-            with codecs.open(data_path + "/log.txt", 'w', 'utf-8') as log_f:
+            print("cpu:%d cnt:%d" % (cpu_id, cnt))
+            with codecs.open("%s/log-%d.txt" %(data_path, cpu_id), 'w', 'utf-8') as log_f:
                 for txt, v in [ ["有価証券報告書", vcnt1], ["四半期報告書", vcnt2], ["中間期報告書", vcnt3], ["IFRS", vifrs], ["USGAAP", vusgaap] ]:
                     log_f.write("report:\t%s\n" % txt)
                     print_context_freq(log_f, v)
@@ -236,6 +249,40 @@ def make_csv():
     csv_f.close()
     print("合計:%d" % cnt)
 
+def concatenate_report(cpu_count):
+    report_all = []
+    for cpu_id in range(cpu_count):
+        report_path = "%s/report-%d.csv" % (data_path, cpu_id)
+        lines = read_lines(report_path)
+        if cpu_id != 0:
+            lines = lines[1:]
+        report_all.extend(lines)
+
+        os.remove(report_path)
+
+    with codecs.open("%s/report.csv" % data_path, 'w', 'utf-8') as f:
+        f.writelines(report_all)
 
 if __name__ == '__main__':
-    make_csv()
+    with codecs.open(data_path + "/schema.txt", 'w', 'utf-8') as f:
+        ReadAllSchema(f)
+
+    cpu_count = multiprocessing.cpu_count()
+    cpu_count = 1
+    process_list = []
+    for cpu_id in range(cpu_count):
+
+        p = Process(target=make_csv, args=(cpu_count, cpu_id, ns_xsd_dic))
+
+        process_list.append(p)
+
+        p.start()
+
+    for p in process_list:
+        p.join()
+
+    concatenate_report(cpu_count)
+
+    print('終了:%d' % int(time.time() - start_time) )
+
+    # make_csv()
