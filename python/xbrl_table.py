@@ -55,6 +55,7 @@ account_ids = [
     "jppfs_cor:OperatingIncome", # 営業利益又は営業損失（△） 営業利益又は営業損失（△） monetaryItemType	22619
     "jppfs_cor:NonOperatingIncome", # 営業外収益 営業外収益 monetaryItemType	14005
     "jppfs_cor:NonOperatingExpenses", # 営業外費用 営業外費用 monetaryItemType	13979
+    "jppfs_cor:InterestExpensesNOE", # 支払利息 支払利息、営業外費用 monetaryItemType	1773 * 8
     "jppfs_cor:OrdinaryIncome", # 経常利益又は経常損失（△） 経常利益又は経常損失（△） monetaryItemType	14430
     "jppfs_cor:ExtraordinaryIncome", # 特別利益 特別利益 monetaryItemType	12288
     "jppfs_cor:ExtraordinaryLoss", # 特別損失 特別損失 monetaryItemType	13247
@@ -67,6 +68,10 @@ account_ids = [
     "jppfs_cor:NetCashProvidedByUsedInFinancingActivities", # 財務活動によるキャッシュ・フロー 財務活動によるキャッシュ・フロー monetaryItemType	14004
     "jppfs_cor:NetIncreaseDecreaseInCashAndCashEquivalents", # 現金及び現金同等物の増減額（△は減少） 現金及び現金同等物の増減額（△は減少） monetaryItemType	14009
     "jpcrp_cor:CashAndCashEquivalentsSummaryOfBusinessResults", # 現金及び現金同等物の残高 現金及び現金同等物の残高、経営指標等 monetaryItemType	14462
+
+    "jppfs_cor:DepreciationAndAmortizationOpeCF", # 減価償却費 減価償却費、営業活動によるキャッシュ・フロー monetaryItemType	1840 * 8
+    "jpcrp_cor:DepreciationSegmentInformation", # 減価償却費 減価償却費、セグメント情報 monetaryItemType	1174 * 8
+    "jppfs_cor:DepreciationSGA", # 減価償却費 減価償却費、販売費及び一般管理費 monetaryItemType	899 * 8
 ]
 
 not_used = [

@@ -94,24 +94,22 @@ def ReadAllSchema(log_f):
 
     # assert xsd_dics[uri] == xsd_dic
 
-def xbrl_test(edinetCode, values, vloc, vcnt, vifrs, vusgaap, el: ET.Element):
+def xbrl_test(edinetCode, values, valid_context_refs, vloc, vcnt, vifrs, vusgaap, el: ET.Element):
     """XBRLファイルの内容を読む。
     """
     id, uri, tag_name, text = parseElement(el)        
 
     if tag_name == "xbrl":
         for child in el:
-            xbrl_test(edinetCode, values, vloc, vcnt, vifrs, vusgaap, child)
+            xbrl_test(edinetCode, values, valid_context_refs, vloc, vcnt, vifrs, vusgaap, child)
         return
 
     if text is None:
         return
 
     context_ref = el.get("contextRef")
-    if context_ref is None or not context_ref in context_refs: # context_ref.startswith("Prior"):
+    if context_ref is None or not context_ref in context_refs:
         return
-
-    idx = context_refs.index(context_ref)
 
     ns = uri.split('/')[-1]
 
@@ -127,7 +125,8 @@ def xbrl_test(edinetCode, values, vloc, vcnt, vifrs, vusgaap, el: ET.Element):
         return
 
     id = "%s:%s" % (ns, tag_name)
-    if id in account_dic:
+    if id in account_dic and context_ref in valid_context_refs:
+
         if ele.type == "stringItemType" and ('\r' in text or '\n' in text):
             text = text.replace('\r', '').replace('\n', '').strip()
 
@@ -137,6 +136,8 @@ def xbrl_test(edinetCode, values, vloc, vcnt, vifrs, vusgaap, el: ET.Element):
 
     name = '"%s:%s", # %s %s %s' % (ns, tag_name, ele.label, ele.verbose_label, ele.type)
     # name = context_ref
+
+    idx = context_refs.index(context_ref)
 
     vloc[idx][name] += 1
 
@@ -160,9 +161,14 @@ def make_titles():
         assert tag_name in xsd_dic
         ele =xsd_dic[tag_name]
 
-        assert not "," in ele.label
-        assert not ele.label in titles
-        titles.append(ele.label)
+        if id in [ "jppfs_cor:DepreciationAndAmortizationOpeCF", "jpcrp_cor:DepreciationSegmentInformation", "jppfs_cor:DepreciationSGA"]:
+            label = ele.verbose_label
+        else:
+            label = ele.label
+
+        assert not "," in label
+        assert not label in titles
+        titles.append(label)
 
     return titles
 
@@ -222,16 +228,19 @@ def make_csv(cpu_count, cpu_id, ns_xsd_dic_arg):
         repo = v2[1]
         if repo == "asr":
             vcnt = vcnt1
+            valid_context_refs = [ "FilingDateInstant", "CurrentYearInstant", "CurrentYearDuration" ]
         elif repo in [ "q1r", "q2r", "q3r", "q4r" ]:
             vcnt = vcnt2
+            valid_context_refs = [ "FilingDateInstant", "CurrentQuarterInstant", "CurrentYTDDuration" ]
         elif repo == "ssr":
             vcnt = vcnt3
+            valid_context_refs = []
         else:
             assert False
 
         vloc  = [ Counter() for _ in context_refs ]
         values = [""] * len(account_ids)
-        xbrl_test(edinetCode, values, vloc, vcnt, vifrs, vusgaap, root)
+        xbrl_test(edinetCode, values, valid_context_refs, vloc, vcnt, vifrs, vusgaap, root)
         csv_f.write("%s\n" % ",".join(values) )
 
         if sum(len(x) for x in vloc) == 0:
@@ -261,14 +270,14 @@ def concatenate_report(cpu_count):
         os.remove(report_path)
 
     with codecs.open("%s/report.csv" % data_path, 'w', 'utf-8') as f:
-        f.writelines(report_all)
+        f.write('\n'.join(report_all))
 
 if __name__ == '__main__':
     with codecs.open(data_path + "/schema.txt", 'w', 'utf-8') as f:
         ReadAllSchema(f)
 
     cpu_count = multiprocessing.cpu_count()
-    cpu_count = 1
+    # cpu_count = 1
     process_list = []
     for cpu_id in range(cpu_count):
 

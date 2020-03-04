@@ -268,7 +268,7 @@ def retry_get_xbrl_docs():
 
 def extract_xbrl():
     cnt = 0
-    for xbrl_file, xml_bin in get_xbrl_zip_bin():
+    for xbrl_file, xml_bin in get_xbrl_zip_bin(cpu_count, cpu_id):
         v1 = xbrl_file.split('_')
         v2 = v1[1].split('-')
         edinetCode = v2[0]
