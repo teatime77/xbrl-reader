@@ -130,7 +130,12 @@ def xbrl_test(edinetCode, values, valid_context_refs, vloc, vcnt, vifrs, vusgaap
         if ele.type == "stringItemType" and ('\r' in text or '\n' in text):
             text = text.replace('\r', '').replace('\n', '').strip()
 
-        values[account_dic[id]] = text
+        if context_ref == "FilingDateInstant" or context_ref.endswith("_NonConsolidatedMember"):
+            values_idx = account_dic[id]
+        else:
+            values_idx = len(account_ids) + account_dic[id]
+
+        values[values_idx] = text
         # 報告書インスタンス 作成ガイドライン
         #   5-6-2 数値を表現する要素
 
@@ -149,7 +154,7 @@ def xbrl_test(edinetCode, values, valid_context_refs, vloc, vcnt, vifrs, vusgaap
         vcnt[idx][name] += 1
 
 def make_titles():
-    titles = []
+    titles = [""] * (2 * len(account_ids))
     for i, id in enumerate(account_ids):
         assert not id in account_dic
         account_dic[id] = i
@@ -168,7 +173,8 @@ def make_titles():
 
         assert not "," in label
         assert not label in titles
-        titles.append(label)
+        titles[i] = label
+        titles[len(account_ids) + i] = label + "2"
 
     return titles
 
@@ -228,10 +234,12 @@ def make_csv(cpu_count, cpu_id, ns_xsd_dic_arg):
         repo = v2[1]
         if repo == "asr":
             vcnt = vcnt1
-            valid_context_refs = [ "FilingDateInstant", "CurrentYearInstant", "CurrentYearDuration" ]
+            valid_context_refs = [ "FilingDateInstant", "CurrentYearInstant", "CurrentYearDuration", 
+                "CurrentYearInstant_NonConsolidatedMember", "CurrentYearDuration_NonConsolidatedMember" ]
         elif repo in [ "q1r", "q2r", "q3r", "q4r" ]:
             vcnt = vcnt2
-            valid_context_refs = [ "FilingDateInstant", "CurrentQuarterInstant", "CurrentYTDDuration" ]
+            valid_context_refs = [ "FilingDateInstant", "CurrentQuarterInstant", "CurrentYTDDuration",
+                "CurrentQuarterInstant_NonConsolidatedMember", "CurrentYTDDuration_NonConsolidatedMember" ]
         elif repo == "ssr":
             vcnt = vcnt3
             valid_context_refs = []
@@ -239,7 +247,7 @@ def make_csv(cpu_count, cpu_id, ns_xsd_dic_arg):
             assert False
 
         vloc  = [ Counter() for _ in context_refs ]
-        values = [""] * len(account_ids)
+        values = [""] * (2 * len(account_ids))
         xbrl_test(edinetCode, values, valid_context_refs, vloc, vcnt, vifrs, vusgaap, root)
         csv_f.write("%s\n" % ",".join(values) )
 
