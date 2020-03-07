@@ -53,6 +53,7 @@ report_path = root_dir + '/web/report'
 
 data_path = root_dir + '/python/data'
 docs_path = root_dir + '/xbrl-zip'
+extract_path = root_dir + '/xbrl-zip'
 
 for path in [data_path, docs_path]:
     if not os.path.exists(path):
@@ -143,7 +144,7 @@ def readAccounts():
 def get_xbrl_zip_bin(cpu_count, cpu_id):
     xbrl = re.compile('XBRL/PublicDoc/jpcrp[-_0-9a-zA-Z]+\.xbrl')
 
-    for _, _, edinetCode, company, zip_path in get_zip_path():
+    for yyyymmdd, doc, edinetCode, company, zip_path in get_zip_path():
 
         assert edinetCode == os.path.basename(zip_path).split('-')[0]
         assert edinetCode[0] == 'E'
@@ -168,7 +169,7 @@ def get_xbrl_zip_bin(cpu_count, cpu_id):
             continue
                 
         xbrl_file_name = xbrl_file.split('/')[-1]
-        yield xbrl_file_name, xml_bin
+        yield yyyymmdd, zip_path, xbrl_file_name, xml_bin
 
 def get_xbrl_root():
     dir_path = "%s/xbrl-xml" % root_dir
@@ -275,7 +276,7 @@ def retry_get_xbrl_docs():
 
 def extract_xbrl(cpu_count, cpu_id):
     cnt = 0
-    for xbrl_file, xml_bin in get_xbrl_zip_bin(cpu_count, cpu_id):
+    for yyyymmdd, zip_path, xbrl_file, xml_bin in get_xbrl_zip_bin(cpu_count, cpu_id):
         v1 = xbrl_file.split('_')
         v2 = v1[1].split('-')
         edinetCode = v2[0]
@@ -321,29 +322,6 @@ def xbrl_test_ifrs(vcnt, el: ET.Element):
     for child in el:
         xbrl_test_ifrs(vcnt, child)
 
-def rem_dirs():
-    dt1 = datetime.datetime.today()
-    
-    while True:
-        dt1 = dt1 + datetime.timedelta(days=-1)
-        if dt1.year == 2014:
-            break
-            
-        yyyymmdd = "%d-%02d-%02d" % (dt1.year, dt1.month, dt1.day)
-        # print(yyyymmdd)
-        day_path = "%s/%d/%02d/%02d" % (docs_path, dt1.year, dt1.month, dt1.day)
-        if not os.path.exists(day_path):
-            continue
-
-        file_list = list(os.listdir(day_path))
-        for file in file_list:
-            dir_path = day_path + "/" + file
-            if os.path.isdir(dir_path):
-                print(dir_path)
-                # shutil.rmtree(dir_path)
-
-import shutil
-
 if __name__ == '__main__':
 
     args = sys.argv
@@ -358,6 +336,3 @@ if __name__ == '__main__':
             cpu_count = 1
             cpu_id = 0
             extract_xbrl(cpu_count, cpu_id)
-
-        elif args[1] == "rem":
-            rem_dirs()

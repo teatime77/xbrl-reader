@@ -31,7 +31,7 @@ root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__))).replace('
 data_path = root_dir + '/python/data'
 
 def get_xbrl_zip_root(cpu_count, cpu_id):
-    for xbrl_file_name, xml_bin in get_xbrl_zip_bin(cpu_count, cpu_id):
+    for yyyymmdd, zip_path, xbrl_file_name, xml_bin in get_xbrl_zip_bin(cpu_count, cpu_id):
         xml_text = xml_bin.decode('utf-8')
         root = ET.fromstring(xml_text)
 
