@@ -19,7 +19,7 @@ from multiprocessing import Process, Array
 
 from xbrl_reader import Inf, SchemaElement, read_lines, ReadSchema, ReadLabel, parseElement, read_company_dic, getAttribs, label_role, verboseLabel_role
 from xbrl_reader import readCalcSub, readCalcArcs
-from xbrl_get import company_dic, get_xbrl_zip_bin
+from xbrl_get import company_dic
 from xbrl_table import account_ids
 
 start_time = time.time()
@@ -29,13 +29,7 @@ ns_xsd_dic = {}
 
 root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__))).replace('\\', '/')
 data_path = root_dir + '/python/data'
-
-def get_xbrl_zip_root(cpu_count, cpu_id):
-    for yyyymmdd, zip_path, xbrl_file_name, xml_bin in get_xbrl_zip_bin(cpu_count, cpu_id):
-        xml_text = xml_bin.decode('utf-8')
-        root = ET.fromstring(xml_text)
-
-        yield xbrl_file_name, root
+group_path = root_dir + '/group-zip'
 
 def ReadAllSchema(log_f):
     inf = Inf()
@@ -191,6 +185,30 @@ def print_context_freq(log_f, vcnt):
 
     log_f.write("\n")
 
+def get_xbrl_root(cpu_count, cpu_id):
+    for zip_path_obj in Path(group_path).glob("**/*.zip"):
+        zip_path = str(zip_path_obj)
+
+        edinetCode = os.path.basename(zip_path).split('.')[0]
+        assert edinetCode[0] == 'E'
+        if int(edinetCode[1:]) % cpu_count != cpu_id:
+            continue
+
+        try:
+            with zipfile.ZipFile(zip_path) as zf:
+                for xbrl_file in zf.namelist():
+                    with zf.open(xbrl_file) as f:
+                        xml_bin = f.read()
+
+                    xml_text = xml_bin.decode('utf-8')
+                    root = ET.fromstring(xml_text)
+
+                    yield xbrl_file, root
+
+        except zipfile.BadZipFile:
+            print("\nBadZipFile : %s\n" % zip_path)
+            continue
+
 def make_csv(cpu_count, cpu_id, ns_xsd_dic_arg):
     global ns_xsd_dic
 
@@ -212,7 +230,8 @@ def make_csv(cpu_count, cpu_id, ns_xsd_dic_arg):
     vusgaap = [ Counter() for _ in context_refs ]
 
     cnt = 0
-    for xbrl_file_name, root in get_xbrl_zip_root(cpu_count, cpu_id):
+
+    for xbrl_file_name, root in get_xbrl_root(cpu_count, cpu_id):
         v1 = xbrl_file_name.split('_')
         if v1[3] != "01":
             # 訂正の場合

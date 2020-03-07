@@ -17,6 +17,19 @@ from collections import OrderedDict
 from xbrl_reader import Inf, SchemaElement, Calc, init_xbrl_reader, read_company_dic, readXbrlThread, make_public_docs_list, read_lines, parseElement, getAttribs, label_role, verboseLabel_role, find
 from xbrl_reader import readCalcSub, readCalcArcs, xsd_dics
 
+root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__))).replace('\\', '/')
+report_path = root_dir + '/web/report'
+
+data_path = root_dir + '/python/data'
+docs_path = root_dir + '/xbrl-zip'
+group_path = root_dir + '/group-zip'
+
+for path in [data_path, docs_path]:
+    if not os.path.exists(path):
+        # フォルダーがなければ作る。
+
+        os.makedirs(path)
+
 company_dic = read_company_dic()
 
 def print_freq(vcnt, top):
@@ -24,7 +37,7 @@ def print_freq(vcnt, top):
     for w, cnt in v[:top]:
         print(w, cnt)
 
-def getDocList(day_path: str, url: str):
+def receive_edinet_doc_list(day_path: str, url: str):
     req = urllib.request.Request(url)
     with urllib.request.urlopen(req) as res:
         body = json.load(res)
@@ -38,69 +51,6 @@ def getDocList(day_path: str, url: str):
 
     return body
 
-def download_file(url, dst_path):
-    with urllib.request.urlopen(url) as web_file:
-        data = web_file.read()
-        with open(dst_path, mode='wb') as local_file:
-            local_file.write(data)
-
-    # try:
-    # except urllib.error.URLError as e:
-    #     print(e)
-
-root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__))).replace('\\', '/')
-report_path = root_dir + '/web/report'
-
-data_path = root_dir + '/python/data'
-docs_path = root_dir + '/xbrl-zip'
-extract_path = root_dir + '/group-zip'
-
-for path in [data_path, docs_path]:
-    if not os.path.exists(path):
-        # フォルダーがなければ作る。
-
-        os.makedirs(path)
-
-
-def get_xbrl_zip_bin(cpu_count, cpu_id):
-    xbrl = re.compile('XBRL/PublicDoc/jpcrp[-_0-9a-zA-Z]+\.xbrl')
-
-    for yyyymmdd, doc, edinetCode, company, zip_path in get_zip_path():
-
-        assert edinetCode == os.path.basename(zip_path).split('-')[0]
-        assert edinetCode[0] == 'E'
-        if int(edinetCode[1:]) % cpu_count != cpu_id:
-            continue
-
-        if not os.path.exists(zip_path):
-            print("no file:%s" % zip_path)
-            continue
-
-        try:
-            with zipfile.ZipFile(zip_path) as zf:
-                xbrl_file = find(x for x in zf.namelist() if xbrl.match(x))
-                if xbrl_file is None:
-                    # print("no xbrl", zip_path)
-                    continue
-
-                with zf.open(xbrl_file) as f:
-                    xml_bin = f.read()
-        except zipfile.BadZipFile:
-            print("\nBadZipFile : %s\n" % zip_path)
-            continue
-                
-        xbrl_file_name = xbrl_file.split('/')[-1]
-        yield yyyymmdd, zip_path, xbrl_file_name, xml_bin
-
-def get_xbrl_root():
-    dir_path = "%s/xbrl-xml" % root_dir
-    for xml_path_obj in Path(dir_path).glob("**/*.xbrl"):
-        xml_path = str(xml_path_obj)
-        xbrl_file_name = xml_path.split(os.sep)[-1]
-        root = ET.parse(xml_path).getroot()
-
-        yield xbrl_file_name, root
-
 def check_zip_file(zip_path: str):
     try:
         with zipfile.ZipFile(zip_path) as zf:
@@ -110,27 +60,30 @@ def check_zip_file(zip_path: str):
     except zipfile.BadZipFile:
         return False
 
-def download_check_zip_file(yyyymmdd, doc, edinetCode, company, dst_path):
-    if os.path.exists(dst_path) and check_zip_file(dst_path):
-        return
-
+def receive_edinet_doc(yyyymmdd, doc, edinetCode, company, dst_path):
     assert edinetCode == doc['edinetCode']
     assert company == company_dic[edinetCode]
 
     print("%s | %s | %s | %s | %s" % (yyyymmdd, doc['filerName'], doc['docDescription'], company['listing'], company['category_name']))
 
     url = "https://disclosure.edinet-fsa.go.jp/api/v1/documents/%s?type=1" % doc['docID']
-    download_file(url, dst_path)
+    with urllib.request.urlopen(url) as web_file:
+        data = web_file.read()
 
-    if not check_zip_file(dst_path):
-        print("!!!!!!!!!! ERROR !!!!!!!!!!\n" * 1)
-        print("!!!!!!!!!! ERROR [%s] !!!!!!!!!!\n" % dst_path)
-        print("!!!!!!!!!! ERROR !!!!!!!!!!\n" * 1)
-        time.sleep(10)
+        with open(dst_path, mode='wb') as local_file:
+            local_file.write(data)
+
+        if not check_zip_file(dst_path):
+            print("!!!!!!!!!! ERROR !!!!!!!!!!\n" * 1)
+            print("msg:[%s] status:[%s] reason:[%s]" % (str(web_file.msg), str(web_file.status), str(web_file.reason) ))
+            print("!!!!!!!!!! ERROR [%s] !!!!!!!!!!\n" % dst_path)
+            print(json.dumps(doc, indent=2, ensure_ascii=False))
+            print("!!!!!!!!!! ERROR !!!!!!!!!!\n" * 1)
+            time.sleep(10)
 
     time.sleep(1)
 
-def download_docs(yyyymmdd, day_path, body):
+def select_doc(day_path, body):
     for doc in body['results']:   
         docTypeCode = doc['docTypeCode']
         if docTypeCode in [ '120', '130', '140', '150', '160', '170' ] and doc['docInfoEditStatus'] == "0":
@@ -163,62 +116,63 @@ def get_xbrl_docs():
 
         json_path = "%s/docs.json" % day_path
         if os.path.exists(json_path):
-            print("read json:%s" % json_path)
             with codecs.open(json_path, 'r', 'utf-8') as f:
                 body = json.load(f)
 
         else:
             url = 'https://disclosure.edinet-fsa.go.jp/api/v1/documents.json?date=%s&type=2' % yyyymmdd
-            body = getDocList(day_path, url)
+            body = receive_edinet_doc_list(day_path, url)
             time.sleep(1)
 
-        for doc, edinetCode, company, dst_path in download_docs(yyyymmdd, day_path, body):
-            download_check_zip_file(yyyymmdd, doc, edinetCode, company, dst_path)
+        for doc, edinetCode, company, dst_path in select_doc(day_path, body):
+            if os.path.exists(dst_path) and check_zip_file(dst_path):
+                continue
 
-def get_zip_path():
-    for json_path_obj in Path(docs_path).glob("**/docs.json"):
-        json_path = str(json_path_obj)
+            receive_edinet_doc(yyyymmdd, doc, edinetCode, company, dst_path)
 
-        paths = json_path.split(os.sep)
-        yyyymmdd = "%s-%s-%s" % (paths[-4], paths[-3], paths[-2])
-        day_path = "%s/%s/%s/%s" % (docs_path, paths[-4], paths[-3], paths[-2])
-
-        with codecs.open(json_path, 'r', 'utf-8') as f:
-            body = json.load(f)
-
-        for doc, edinetCode, company, dst_path in download_docs(yyyymmdd, day_path, body):
-            yield [yyyymmdd, doc, edinetCode, company, dst_path]
-
-def retry_get_xbrl_docs():
-    for yyyymmdd, doc, edinetCode, company, dst_path in get_zip_path():
-        download_check_zip_file(yyyymmdd, doc, edinetCode, company, dst_path)
-
-def extract_xbrl(cpu_count, cpu_id):
-    cnt = 0
-    for yyyymmdd, zip_path, xbrl_file, xml_bin in get_xbrl_zip_bin(cpu_count, cpu_id):
-        v1 = xbrl_file.split('_')
-        v2 = v1[1].split('-')
-        edinetCode = v2[0]
-        if edinetCode in company_dic:
-            category_name = company_dic[edinetCode]["category_name"]
+def group_zip():
+    dic = {}
+    for zip_path_obj in Path(docs_path).glob("**/*.zip"):
+        zip_path = str(zip_path_obj)
+        edinetCode = os.path.basename(zip_path).split('-')[0]
+        if edinetCode in dic:
+            dic[edinetCode].append(zip_path)
         else:
-            category_name = "other"
+            dic[edinetCode] = [ zip_path ]
 
-        dir_path = "%s/xbrl-xml/%s/%s" % (root_dir, category_name, edinetCode)
-        if not os.path.exists(dir_path):
-            # フォルダーがなければ作る。
+    if not os.path.exists(group_path):
+        # フォルダーがなければ作る。
 
-            os.makedirs(dir_path)
+        os.makedirs(group_path)
 
-        xml_path = dir_path + "/" + xbrl_file
-        with open(xml_path, "wb") as f:
-            f.write(xml_bin)
+    xbrl = re.compile('XBRL/PublicDoc/jpcrp[-_0-9a-zA-Z]+\.xbrl')
 
-        cnt += 1
-        if cnt % 100 == 0:
-            print(cnt)
+    log_f = codecs.open("%s/group_log.txt" % data_path, 'w', 'utf-8')
 
-    print("合計 : %d" % cnt)
+    for edinetCode, zip_paths in dic.items():
+        group_zip_path = "%s/%s.zip" % (group_path, edinetCode)
+        print(group_zip_path)
+        with zipfile.ZipFile(group_zip_path, 'w', compression=zipfile.ZIP_DEFLATED) as new_zip:
+            for zip_path in zip_paths:
+                try:
+                    with zipfile.ZipFile(zip_path) as zf:
+                        xbrl_file = find(x for x in zf.namelist() if xbrl.match(x))
+                        if xbrl_file is None:
+                            # print("no xbrl", zip_path)
+                            continue
+
+                        with zf.open(xbrl_file) as f:
+                            xml_bin = f.read()
+
+                        file_name = xbrl_file.split('/')[-1]
+                        new_zip.writestr(file_name, xml_bin)
+
+                except zipfile.BadZipFile:
+                    print("\nBadZipFile : %s\n" % zip_path)
+                    log_f.write("BadZipFile:[%s]\n" % zip_path)
+                    continue
+
+    log_f.close()
 
 if __name__ == '__main__':
 
@@ -227,10 +181,6 @@ if __name__ == '__main__':
         if args[1] == "get":
             get_xbrl_docs()
 
-        elif args[1] == "retry":
-            retry_get_xbrl_docs()
+        elif args[1] == "group":
+            group_zip()
 
-        elif args[1] == "extract":
-            cpu_count = 1
-            cpu_id = 0
-            extract_xbrl(cpu_count, cpu_id)
