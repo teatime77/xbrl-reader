@@ -53,7 +53,7 @@ report_path = root_dir + '/web/report'
 
 data_path = root_dir + '/python/data'
 docs_path = root_dir + '/xbrl-zip'
-extract_path = root_dir + '/xbrl-zip'
+extract_path = root_dir + '/group-zip'
 
 for path in [data_path, docs_path]:
     if not os.path.exists(path):
@@ -61,85 +61,6 @@ for path in [data_path, docs_path]:
 
         os.makedirs(path)
 
-class Account:
-    label: str
-    verboseLabel: str
-    elementName: str
-    type: str
-    depth: int
-
-    def __init__(self, items):
-        self.label = items[1]
-        self.verboseLabel = items[2]
-        self.elementName = items[8]
-        self.type = items[9]
-        self.depth = int(items[14])
-
-
-def read_jpcrp_labelArc(el: ET.Element, labelArcs):
-    id, uri, tag_name, text = parseElement(el)
-
-    if tag_name == "labelArc":
-        attr = getAttribs(el)
-
-        assert 'from' in attr and 'to' in attr
-        labelArcs[attr['to']] = attr['from']
-
-    for child in el:
-        read_jpcrp_labelArc(child, labelArcs)
-
-
-def read_jpcrp_label(el: ET.Element, labelArcs, label_dic, verbose_label_dic):
-    id, uri, tag_name, text = parseElement(el)
-
-
-    if tag_name == "label":
-
-        attr = getAttribs(el)
-        assert 'label' in attr and 'role' in attr
-        assert attr['label'] in labelArcs
-        label = labelArcs[attr['label']]
-
-        if attr['role'] == label_role:
-            label_dic[label] = el.text
-        elif attr['role'] == verboseLabel_role:
-            verbose_label_dic[label] = el.text
-
-    # 再帰的にXBRLファイルの内容を読む。
-    for child in el:
-        read_jpcrp_label(child, labelArcs, label_dic, verbose_label_dic)
-
-
-def read_label():
-    label_path = "%s/data/EDINET/taxonomy/2019-11-01/taxonomy/jpcrp/2019-11-01/label/jpcrp_2019-11-01_lab.xml" % root_dir
-    root = ET.parse(label_path).getroot()
-    labelArcs = {}
-    read_jpcrp_labelArc(root, labelArcs)
-
-    label_dic = {}
-    verbose_label_dic = {}
-    read_jpcrp_label(root, labelArcs, label_dic, verbose_label_dic)
-
-    return label_dic, verbose_label_dic
-
-def readAccounts():
-    path = '%s/data/EDINET/勘定科目リスト.csv' % root_dir
-    lines = read_lines(path)
-    
-    accounts = {}
-
-    lines = lines[2:]
-    for line in lines:
-        items = line.split('\t')
-
-        # 0:科目分類 1:標準ラベル（日本語） 2:冗長ラベル（日本語） 3:標準ラベル（英語） 4:冗長ラベル（英語） 5:用途区分、財務諸表区分及び業種区分のラベル（日本語） 6:用途区分、財務諸表区分及び業種区分のラベル（英語） 7:名前空間プレフィックス 8:要素名 9:type 10:substitutionGroup 11:periodType 12:balance 13:abstract 14:depth
-        if len(items) != 15 or items[7] != 'jppfs_cor':
-            continue
-
-        account = Account(items)
-        accounts[account.elementName] = account
-
-    return accounts
 
 def get_xbrl_zip_bin(cpu_count, cpu_id):
     xbrl = re.compile('XBRL/PublicDoc/jpcrp[-_0-9a-zA-Z]+\.xbrl')
@@ -272,8 +193,6 @@ def retry_get_xbrl_docs():
     for yyyymmdd, doc, edinetCode, company, dst_path in get_zip_path():
         download_check_zip_file(yyyymmdd, doc, edinetCode, company, dst_path)
 
-
-
 def extract_xbrl(cpu_count, cpu_id):
     cnt = 0
     for yyyymmdd, zip_path, xbrl_file, xml_bin in get_xbrl_zip_bin(cpu_count, cpu_id):
@@ -300,27 +219,6 @@ def extract_xbrl(cpu_count, cpu_id):
             print(cnt)
 
     print("合計 : %d" % cnt)
-
-def xbrl_test_ifrs(vcnt, el: ET.Element):
-    """XBRLファイルの内容を読む。
-    """
-    id, uri, tag_name, text = parseElement(el)
-    if "IFRS" in tag_name:
-
-        context_ref = el.get("contextRef")
-
-        if context_ref is not None and not context_ref.startswith("Prior"):
-
-            uri.split('/')[-1]
-            if tag_name in verbose_label_dic:
-                jp = ":" + verbose_label_dic[tag_name]
-            else:
-                jp = ""
-            vcnt[uri.split('/')[-1] + ":" + tag_name + jp] += 1
-            return
-
-    for child in el:
-        xbrl_test_ifrs(vcnt, child)
 
 if __name__ == '__main__':
 
