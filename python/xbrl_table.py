@@ -1,12 +1,13 @@
 account_ids = [
-    "jpdei_cor:EDINETCodeDEI", # EDINETコード
+    # "jpdei_cor:EDINETCodeDEI", # EDINETコード
+    # "jpcrp_cor:FilingDateCoverPage", # 提出日 提出日、表紙 dateItemType	17139
+    # "jpdei_cor:TypeOfCurrentPeriodDEI", # 当会計期間の種類 当会計期間の種類、DEI stringItemType	17144
+
     "jpdei_cor:SecurityCodeDEI", # 証券コード 証券コード、DEI stringItemType	17129
 
-    "jpcrp_cor:FilingDateCoverPage", # 提出日 提出日、表紙 dateItemType	17139
     "jpcrp_cor:FiscalYearCoverPage", # 事業年度 事業年度、表紙 stringItemType	17176
     "jpdei_cor:CurrentFiscalYearStartDateDEI", # 当事業年度開始日 当事業年度開始日、DEI dateItemType	17144
     "jpdei_cor:CurrentFiscalYearEndDateDEI", # 当事業年度終了日 当事業年度終了日、DEI dateItemType	17144
-    "jpdei_cor:TypeOfCurrentPeriodDEI", # 当会計期間の種類 当会計期間の種類、DEI stringItemType	17144
     "jpdei_cor:CurrentPeriodEndDateDEI", # 当会計期間終了日 当会計期間終了日、DEI dateItemType	17144
 
     "jpdei_cor:AccountingStandardsDEI", # 会計基準 会計基準、DEI stringItemType	17144
@@ -51,6 +52,7 @@ account_ids = [
     "jppfs_cor:GrossProfit", # 売上総利益又は売上総損失（△） 売上総利益又は売上総損失（△） monetaryItemType	13431
     "jppfs_cor:SellingGeneralAndAdministrativeExpenses", # 販売費及び一般管理費 販売費及び一般管理費 monetaryItemType	13984
     "jppfs_cor:SalariesAndAllowancesSGA", # 給料及び手当 給料及び手当、販売費及び一般管理費 monetaryItemType	5525
+    "jppfs_cor:DepreciationSGA", # 減価償却費 減価償却費、販売費及び一般管理費 monetaryItemType	899 * 8
     "jppfs_cor:ResearchAndDevelopmentExpensesSGA", # 研究開発費 研究開発費、販売費及び一般管理費 monetaryItemType	7298
     "jppfs_cor:OperatingIncome", # 営業利益又は営業損失（△） 営業利益又は営業損失（△） monetaryItemType	22619
     "jppfs_cor:NonOperatingIncome", # 営業外収益 営業外収益 monetaryItemType	14005
@@ -64,14 +66,11 @@ account_ids = [
     "jppfs_cor:ProfitLoss", # 当期純利益又は当期純損失（△） 当期純利益又は当期純損失（△）（平成26年3月28日財規等改正後） monetaryItemType	21112
 
     "jppfs_cor:NetCashProvidedByUsedInOperatingActivities", # 営業活動によるキャッシュ・フロー 営業活動によるキャッシュ・フロー monetaryItemType	14009
+    "jppfs_cor:DepreciationAndAmortizationOpeCF", # 減価償却費 減価償却費、営業活動によるキャッシュ・フロー monetaryItemType	1840 * 8
     "jppfs_cor:NetCashProvidedByUsedInInvestmentActivities", # 投資活動によるキャッシュ・フロー 投資活動によるキャッシュ・フロー monetaryItemType	14009
     "jppfs_cor:NetCashProvidedByUsedInFinancingActivities", # 財務活動によるキャッシュ・フロー 財務活動によるキャッシュ・フロー monetaryItemType	14004
     "jppfs_cor:NetIncreaseDecreaseInCashAndCashEquivalents", # 現金及び現金同等物の増減額（△は減少） 現金及び現金同等物の増減額（△は減少） monetaryItemType	14009
     "jpcrp_cor:CashAndCashEquivalentsSummaryOfBusinessResults", # 現金及び現金同等物の残高 現金及び現金同等物の残高、経営指標等 monetaryItemType	14462
-
-    "jppfs_cor:DepreciationAndAmortizationOpeCF", # 減価償却費 減価償却費、営業活動によるキャッシュ・フロー monetaryItemType	1840 * 8
-    "jpcrp_cor:DepreciationSegmentInformation", # 減価償却費 減価償却費、セグメント情報 monetaryItemType	1174 * 8
-    "jppfs_cor:DepreciationSGA", # 減価償却費 減価償却費、販売費及び一般管理費 monetaryItemType	899 * 8
 ]
 
 not_used = [

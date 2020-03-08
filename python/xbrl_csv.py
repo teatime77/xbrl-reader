@@ -18,12 +18,33 @@ import multiprocessing
 from multiprocessing import Process, Array
 
 from xbrl_reader import Inf, SchemaElement, read_lines, ReadSchema, ReadLabel, parseElement, read_company_dic, getAttribs, label_role, verboseLabel_role
-from xbrl_reader import readCalcSub, readCalcArcs
+from xbrl_reader import readCalcSub, readCalcArcs, period_names
 from xbrl_get import company_dic
 from xbrl_table import account_ids
 
 start_time = time.time()
-context_refs = [ "FilingDateInstant", "CurrentYearInstant", "CurrentYearInstant_NonConsolidatedMember", "CurrentYearDuration", "CurrentYearDuration_NonConsolidatedMember", "CurrentQuarterInstant", "CurrentQuarterInstant_NonConsolidatedMember", "CurrentYTDDuration", "CurrentYTDDuration_NonConsolidatedMember", "InterimInstant", "InterimInstant_NonConsolidatedMember", "InterimDuration", "InterimDuration_NonConsolidatedMember"  ]
+
+base_annual_context_names = [
+    "CurrentYearInstant", "CurrentYearDuration", 
+    "Prior1YearInstant", "Prior1YearDuration", 
+]
+
+base_quarterly_context_names = [
+    "CurrentQuarterInstant", "CurrentYTDDuration", "CurrentQuarterDuration",
+    "Prior1QuarterInstant", "Prior1YTDDuration", "Prior1QuarterDuration",
+]
+
+annual_context_names = base_annual_context_names + [ x + "_NonConsolidatedMember" for x in base_annual_context_names ]
+quarterly_context_names = base_quarterly_context_names + [ x + "_NonConsolidatedMember" for x in base_quarterly_context_names ]
+
+context_names = [ "FilingDateInstant" ] + annual_context_names + quarterly_context_names
+
+    # "Prior1YearInstant_NonConsolidatedMember", "Prior1YearDuration_NonConsolidatedMember", 
+    # "Prior1QuarterInstant_NonConsolidatedMember", "Prior1YTDDuration_NonConsolidatedMember", "Prior1QuarterDuration_NonConsolidatedMember",
+    # "Prior1YearInstant_NonConsolidatedMember", "Prior1YearDuration_NonConsolidatedMember", 
+    # "Prior1QuarterInstant_NonConsolidatedMember", "Prior1YTDDuration_NonConsolidatedMember", "Prior1QuarterDuration_NonConsolidatedMember",
+    # "InterimInstant", "InterimInstant_NonConsolidatedMember", "InterimDuration", "InterimDuration_NonConsolidatedMember"  
+
 account_dic = {}
 ns_xsd_dic = {}
 
@@ -88,21 +109,21 @@ def ReadAllSchema(log_f):
 
     # assert xsd_dics[uri] == xsd_dic
 
-def xbrl_test(edinetCode, values, valid_context_refs, vloc, vcnt, vifrs, vusgaap, el: ET.Element):
+def xbrl_test(edinetCode, values, major_context_names, stats, el: ET.Element):
     """XBRLファイルの内容を読む。
     """
     id, uri, tag_name, text = parseElement(el)        
 
     if tag_name == "xbrl":
         for child in el:
-            xbrl_test(edinetCode, values, valid_context_refs, vloc, vcnt, vifrs, vusgaap, child)
+            xbrl_test(edinetCode, values, major_context_names, stats, child)
         return
 
     if text is None:
         return
 
     context_ref = el.get("contextRef")
-    if context_ref is None or not context_ref in context_refs:
+    if context_ref is None or not context_ref in context_names:
         return
 
     ns = uri.split('/')[-1]
@@ -119,36 +140,33 @@ def xbrl_test(edinetCode, values, valid_context_refs, vloc, vcnt, vifrs, vusgaap
         return
 
     id = "%s:%s" % (ns, tag_name)
-    if id in account_dic and context_ref in valid_context_refs:
+
+    if id in account_dic and context_ref in major_context_names:
+
+        major_idx = major_context_names.index(context_ref)
 
         if ele.type == "stringItemType" and ('\r' in text or '\n' in text):
             text = text.replace('\r', '').replace('\n', '').strip()
 
-        if context_ref == "FilingDateInstant" or context_ref.endswith("_NonConsolidatedMember"):
-            values_idx = account_dic[id]
-        else:
-            values_idx = len(account_ids) + account_dic[id]
-
-        values[values_idx] = text
+        values[major_idx][ account_dic[id] ] = text
         # 報告書インスタンス 作成ガイドライン
         #   5-6-2 数値を表現する要素
 
-    name = '"%s:%s", # %s %s %s' % (ns, tag_name, ele.label, ele.verbose_label, ele.type)
-    # name = context_ref
+    name = '"%s", # %s %s %s' % (id, ele.label, ele.verbose_label, ele.type)
 
-    idx = context_refs.index(context_ref)
+    idx = context_names.index(context_ref)
+    stats[idx][name] += 1
 
-    vloc[idx][name] += 1
-
-    if "IFRS" in tag_name:
-        vifrs[idx][name] += 1
-    elif "USGAAP" in tag_name:
-        vusgaap[idx][name] += 1
+def get_context_name(context_ref):
+    if context_ref.endswith("_NonConsolidatedMember"):
+        name = context_ref.replace("_NonConsolidatedMember", "")
+        return period_names[name].replace("連結", "個別")
     else:
-        vcnt[idx][name] += 1
+        return period_names[context_ref]
+
 
 def make_titles():
-    titles = [""] * (2 * len(account_ids))
+    titles = [""] * len(account_ids)
     for i, id in enumerate(account_ids):
         assert not id in account_dic
         account_dic[id] = i
@@ -167,23 +185,28 @@ def make_titles():
 
         assert not "," in label
         assert not label in titles
+
         titles[i] = label
-        titles[len(account_ids) + i] = label + "2"
 
-    return titles
+    return [ "EDINETコード", "提出日", "報告書略号", "コンテキスト" ] +  titles
 
-def print_context_freq(log_f, vcnt):
-    for idx, context_ref in enumerate(context_refs):
-        if len(vcnt[idx]) == 0:
-            continue
+def print_context_stats(cpu_id, annual_stats, quarterly_stats):
+    with codecs.open("%s/log-%d.txt" %(data_path, cpu_id), 'w', 'utf-8') as log_f:
+        for report_name, stats in [ ["有価証券報告書", annual_stats], ["四半期報告書", quarterly_stats] ]:
+            log_f.write("report:\t%s\n" % report_name)
+            log_f.write("\n")
 
-        log_f.write("context:\t%s\n" % context_ref)
-        v = list(sorted(vcnt[idx].items(), key=lambda x:x[1], reverse=True))
-        for w, cnt in v[:200]:
-            log_f.write("%s\t%d\n" % (w, cnt))
-        log_f.write("\n")
+            for idx, context_ref in enumerate(context_names):
+                if len(stats[idx]) == 0:
+                    continue
 
-    log_f.write("\n")
+                log_f.write("context:\t%s\n" % get_context_name(context_ref) )
+                v = list(sorted(stats[idx].items(), key=lambda x:x[1], reverse=True))
+                for w, cnt in v[:200]:
+                    log_f.write("%s\t%d\n" % (w, cnt))
+                log_f.write("\n")
+
+            log_f.write("\n")
 
 def get_xbrl_root(cpu_count, cpu_id):
     for zip_path_obj in Path(group_path).glob("**/*.zip"):
@@ -223,15 +246,21 @@ def make_csv(cpu_count, cpu_id, ns_xsd_dic_arg):
     titles = make_titles()
     csv_f.write("%s\n" % ",".join(titles) )
 
-    vcnt1 = [ Counter() for _ in context_refs ]
-    vcnt2 = [ Counter() for _ in context_refs ]
-    vcnt3 = [ Counter() for _ in context_refs ]
-    vifrs = [ Counter() for _ in context_refs ]
-    vusgaap = [ Counter() for _ in context_refs ]
+    annual_stats = [ Counter() for _ in context_names ]
+    quarterly_stats = [ Counter() for _ in context_names ]
 
     cnt = 0
 
     for xbrl_file_name, root in get_xbrl_root(cpu_count, cpu_id):
+
+        # 報告書インスタンス作成ガイドライン
+            #  4-2-4 XBRLインスタンスファイル XBRLインスタンスファイルの命名規約
+                # jp{府令略号}{様式番号}-{報告書略号}-{報告書連番(3桁)}
+                # {EDINETコード又はファンドコード}-{追番(3桁)}
+                # {報告対象期間期末日|報告義務発生日}
+                # {報告書提出回数(2桁)}
+                # {報告書提出日}.xbrl
+
         v1 = xbrl_file_name.split('_')
         if v1[3] != "01":
             # 訂正の場合
@@ -242,8 +271,7 @@ def make_csv(cpu_count, cpu_id, ns_xsd_dic_arg):
         if not edinetCode in company_dic:
             continue
 
-        # if int(edinetCode[1:]) % cpu_count != cpu_id:
-        #     continue
+        filingDate = v1[4].split('.')[0]
 
         company = company_dic[edinetCode]
         if company['category_name_jp'] in ["保険業", "その他金融業", "証券、商品先物取引業", "銀行業"]:
@@ -252,35 +280,29 @@ def make_csv(cpu_count, cpu_id, ns_xsd_dic_arg):
         v2 = v1[0].split('-')
         repo = v2[1]
         if repo == "asr":
-            vcnt = vcnt1
-            valid_context_refs = [ "FilingDateInstant", "CurrentYearInstant", "CurrentYearDuration", 
-                "CurrentYearInstant_NonConsolidatedMember", "CurrentYearDuration_NonConsolidatedMember" ]
+            stats = annual_stats
+            major_context_names = [ "FilingDateInstant" ] + annual_context_names
+
         elif repo in [ "q1r", "q2r", "q3r", "q4r" ]:
-            vcnt = vcnt2
-            valid_context_refs = [ "FilingDateInstant", "CurrentQuarterInstant", "CurrentYTDDuration",
-                "CurrentQuarterInstant_NonConsolidatedMember", "CurrentYTDDuration_NonConsolidatedMember" ]
+            stats = quarterly_stats
+            major_context_names = [ "FilingDateInstant" ] + quarterly_context_names
+
         elif repo == "ssr":
-            vcnt = vcnt3
-            valid_context_refs = []
+            continue
         else:
             assert False
 
-        vloc  = [ Counter() for _ in context_refs ]
-        values = [""] * (2 * len(account_ids))
-        xbrl_test(edinetCode, values, valid_context_refs, vloc, vcnt, vifrs, vusgaap, root)
-        csv_f.write("%s\n" % ",".join(values) )
+        values = [ [""] * len(account_ids) for _ in major_context_names ]
 
-        if sum(len(x) for x in vloc) == 0:
-            print(xbrl_file_name, company['category_name_jp'])
+        xbrl_test(edinetCode, values, major_context_names, stats, root)
+        for idx, context_name in enumerate(major_context_names):
+            csv_f.write("%s,%s,%s,%s,%s\n" % (edinetCode, filingDate, repo, get_context_name(context_name), ",".join(values[idx])) )
 
         cnt += 1
-        if cnt % 1000 == 0:
+        if cnt % 500 == 0:
             print("cpu:%d cnt:%d" % (cpu_id, cnt))
-            with codecs.open("%s/log-%d.txt" %(data_path, cpu_id), 'w', 'utf-8') as log_f:
-                for txt, v in [ ["有価証券報告書", vcnt1], ["四半期報告書", vcnt2], ["中間期報告書", vcnt3], ["IFRS", vifrs], ["USGAAP", vusgaap] ]:
-                    log_f.write("report:\t%s\n" % txt)
-                    print_context_freq(log_f, v)
-                    log_f.write("\n")
+
+    print_context_stats(cpu_id, annual_stats, quarterly_stats)
 
     csv_f.close()
     print("合計:%d" % cnt)
@@ -304,7 +326,6 @@ if __name__ == '__main__':
         ReadAllSchema(f)
 
     cpu_count = multiprocessing.cpu_count()
-    # cpu_count = 1
     process_list = []
     for cpu_id in range(cpu_count):
 
@@ -320,5 +341,3 @@ if __name__ == '__main__':
     concatenate_report(cpu_count)
 
     print('終了:%d' % int(time.time() - start_time) )
-
-    # make_csv()

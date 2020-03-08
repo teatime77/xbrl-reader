@@ -105,16 +105,21 @@ verboseLabel_role = "http://www.xbrl.org/2003/role/verboseLabel"
 # 報告書インスタンス作成ガイドラインの 5-4-5 コンテキストの設定例
 period_names_list = [
     ("FilingDateInstant", "提出日時点"),
+
     ("CurrentYearInstant", "当期連結時点"),
     ("CurrentYearDuration", "当期連結期間"),
+
     ("CurrentQuarterInstant", "当四半期会計期間連結時点"),
     ("CurrentQuarterDuration", "当四半期会計期間連結期間"),
     ("CurrentYTDDuration", "当四半期累計期間連結期間"),
-    ("Prior1YTDDuration", "前年度同四半期累計期間連結期間"),
-    ("Prior1QuarterInstant", "前年度同四半期会計期間連結時点"),
-    ("Prior1QuarterDuration", "前年度同四半期会計期間連結期間"),
+
     ("Prior1YearInstant", "前期連結時点"),
     ("Prior1YearDuration", "前期連結期間"),
+
+    ("Prior1QuarterInstant", "前年度同四半期会計期間連結時点"),
+    ("Prior1QuarterDuration", "前年度同四半期会計期間連結期間"),
+    ("Prior1YTDDuration", "前年度同四半期累計期間連結期間"),
+
     ("Prior2YearInstant", "前々期連結時点"),
     ("Prior2YearDuration", "前々期連結期間"),
     ("Prior3YearInstant", "3期前連結時点"),
