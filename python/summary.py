@@ -19,7 +19,7 @@ from multiprocessing import Process, Array
 
 from xbrl_reader import Inf, SchemaElement, read_lines, ReadSchema, ReadLabel, parseElement, read_company_dic, getAttribs, label_role, verboseLabel_role
 from xbrl_reader import readCalcSub, readCalcArcs, period_names
-from xbrl_get import company_dic
+from download import company_dic
 from xbrl_table import all_account_ids
 
 start_time = time.time()
@@ -29,13 +29,19 @@ base_annual_context_names = [
     "Prior1YearInstant", "Prior1YearDuration", 
 ]
 
-base_quarterly_context_names = [
-    "CurrentQuarterInstant", "CurrentYTDDuration", "CurrentQuarterDuration",
-    "Prior1QuarterInstant", "Prior1YTDDuration", "Prior1QuarterDuration",
-]
+# base_quarterly_context_names = [
+#     "CurrentQuarterInstant", "CurrentYTDDuration", "CurrentQuarterDuration",
+#     "Prior1QuarterInstant", "Prior1YTDDuration", "Prior1QuarterDuration",
+# ]
 
 annual_context_names = base_annual_context_names + [ x + "_NonConsolidatedMember" for x in base_annual_context_names ]
-quarterly_context_names = base_quarterly_context_names + [ x + "_NonConsolidatedMember" for x in base_quarterly_context_names ]
+# quarterly_context_names = base_quarterly_context_names + [ x + "_NonConsolidatedMember" for x in base_quarterly_context_names ]
+quarterly_context_names = [
+    "CurrentQuarterInstant", # 当四半期会計期間連結時点, 
+    "CurrentYTDDuration",    # 当四半期累計期間連結期間, 
+    "Prior1YearInstant",     # 前期連結時点
+    "Prior1YTDDuration",     # 前年度同四半期累計期間連結期間
+]
 
 context_names = [ "FilingDateInstant" ] + annual_context_names + quarterly_context_names
 
@@ -128,14 +134,14 @@ def get_context_type(context_name: str):
 
         return 2
 
-def xbrl_test(edinetCode, values, major_context_names, stats, el: ET.Element):
+def collect_values(edinetCode, values, major_context_names, stats, el: ET.Element):
     """XBRLファイルの内容を読む。
     """
     id, uri, tag_name, text = parseElement(el)        
 
     if tag_name == "xbrl":
         for child in el:
-            xbrl_test(edinetCode, values, major_context_names, stats, child)
+            collect_values(edinetCode, values, major_context_names, stats, child)
         return
 
     if text is None:
@@ -238,7 +244,7 @@ def get_xbrl_root(cpu_count, cpu_id):
             print("\nBadZipFile : %s\n" % zip_path)
             continue
 
-def make_csv(cpu_count, cpu_id, ns_xsd_dic_arg):
+def make_summary(cpu_count, cpu_id, ns_xsd_dic_arg):
     global ns_xsd_dic
 
     for key, dict in ns_xsd_dic_arg.items():
@@ -249,13 +255,13 @@ def make_csv(cpu_count, cpu_id, ns_xsd_dic_arg):
 
     csv_f = [None] * 3
     for context_type in range(3):
-        csv_f[context_type] = codecs.open("%s/report-%d-%d.csv" % (data_path, context_type, cpu_id), 'w', 'utf-8')
+        csv_f[context_type] = codecs.open("%s/summary-%d-%d.csv" % (data_path, context_type, cpu_id), 'w', 'utf-8')
 
         titles = make_titles(context_type)
         if context_type == 0:
-            csv_f[context_type].write("EDINETコード,提出日,報告書略号,%s\n" % ",".join(titles) )
+            csv_f[context_type].write("EDINETコード,会計期間終了日,報告書略号,%s\n" % ",".join(titles) )
         else:
-            csv_f[context_type].write("EDINETコード,提出日,報告書略号,コンテキスト,%s\n" % ",".join(titles) )
+            csv_f[context_type].write("EDINETコード,会計期間終了日,報告書略号,コンテキスト,%s\n" % ",".join(titles) )
 
     annual_stats = [ Counter() for _ in context_names ]
     quarterly_stats = [ Counter() for _ in context_names ]
@@ -282,7 +288,7 @@ def make_csv(cpu_count, cpu_id, ns_xsd_dic_arg):
         if not edinetCode in company_dic:
             continue
 
-        filingDate = v1[4].split('.')[0]
+        end_date = v1[2]
 
         company = company_dic[edinetCode]
         if company['category_name_jp'] in ["保険業", "その他金融業", "証券、商品先物取引業", "銀行業"]:
@@ -305,14 +311,14 @@ def make_csv(cpu_count, cpu_id, ns_xsd_dic_arg):
 
         values = [ [""] * len(all_account_ids[ get_context_type(x) ]) for x in major_context_names ]
 
-        xbrl_test(edinetCode, values, major_context_names, stats, root)
+        collect_values(edinetCode, values, major_context_names, stats, root)
         for idx, context_name in enumerate(major_context_names):
             context_type = get_context_type(context_name)
 
             if context_type == 0:
-                csv_f[context_type].write("%s,%s,%s,%s\n" % (edinetCode, filingDate, repo, ",".join(values[idx])) )
+                csv_f[context_type].write("%s,%s,%s,%s\n" % (edinetCode, end_date, repo, ",".join(values[idx])) )
             else:
-                csv_f[context_type].write("%s,%s,%s,%s,%s\n" % (edinetCode, filingDate, repo, context_display_name(context_name), ",".join(values[idx])) )
+                csv_f[context_type].write("%s,%s,%s,%s,%s\n" % (edinetCode, end_date, repo, context_display_name(context_name), ",".join(values[idx])) )
 
         cnt += 1
         if cnt % 500 == 0:
@@ -362,20 +368,20 @@ def concatenate_stats(cpu_count):
     stats_f.close()
 
 
-def concatenate_report(cpu_count):
+def concatenate_summary(cpu_count):
     for context_type in range(3):
-        report_all = []
+        summary_all = []
         for cpu_id in range(cpu_count):
-            report_path = "%s/report-%d-%d.csv" % (data_path, context_type, cpu_id)
-            lines = read_lines(report_path)
+            summary_path = "%s/summary-%d-%d.csv" % (data_path, context_type, cpu_id)
+            lines = read_lines(summary_path)
             if cpu_id != 0:
                 lines = lines[1:]
-            report_all.extend(lines)
+            summary_all.extend(lines)
 
-            os.remove(report_path)
+            os.remove(summary_path)
 
-        with codecs.open("%s/report-%d.csv" % (data_path, context_type), 'w', 'utf-8') as f:
-            f.write('\n'.join(report_all))
+        with codecs.open("%s/summary-%d.csv" % (data_path, context_type), 'w', 'utf-8') as f:
+            f.write('\n'.join(summary_all))
 
 if __name__ == '__main__':
     with codecs.open(data_path + "/schema.txt", 'w', 'utf-8') as f:
@@ -385,7 +391,7 @@ if __name__ == '__main__':
     process_list = []
     for cpu_id in range(cpu_count):
 
-        p = Process(target=make_csv, args=(cpu_count, cpu_id, ns_xsd_dic))
+        p = Process(target=make_summary, args=(cpu_count, cpu_id, ns_xsd_dic))
 
         process_list.append(p)
 
@@ -394,7 +400,7 @@ if __name__ == '__main__':
     for p in process_list:
         p.join()
 
-    concatenate_report(cpu_count)
+    concatenate_summary(cpu_count)
 
     concatenate_stats(cpu_count)
 
