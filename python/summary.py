@@ -55,8 +55,8 @@ account_dics = [ {}, {}, {} ]
 ns_xsd_dic = {}
 
 root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__))).replace('\\', '/')
-data_path = root_dir + '/python/data'
-group_path = root_dir + '/group-zip'
+data_path    = root_dir + '/python/data'
+extract_path = root_dir + '/zip/extract'
 
 def ReadAllSchema(log_f):
     inf = Inf()
@@ -221,7 +221,7 @@ def make_titles(context_type):
     return titles
 
 def get_xbrl_root(cpu_count, cpu_id):
-    for zip_path_obj in Path(group_path).glob("**/*.zip"):
+    for zip_path_obj in Path(extract_path).glob("**/E*.zip"):
         zip_path = str(zip_path_obj)
 
         edinetCode = os.path.basename(zip_path).split('.')[0]

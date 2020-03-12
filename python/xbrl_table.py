@@ -1,12 +1,13 @@
 filing_date_account_ids = [
     # "jpdei_cor:EDINETCodeDEI", # EDINETコード
-    "jpcrp_cor:FilingDateCoverPage", # 提出日 提出日、表紙 dateItemType
+    # "jpdei_cor:CurrentPeriodEndDateDEI", # 当会計期間終了日 当会計期間終了日、DEI dateItemType
     # "jpdei_cor:TypeOfCurrentPeriodDEI", # 当会計期間の種類 当会計期間の種類、DEI stringItemType
+
+    "jpcrp_cor:FilingDateCoverPage", # 提出日 提出日、表紙 dateItemType
     "jpdei_cor:SecurityCodeDEI", # 証券コード 証券コード、DEI stringItemType
     "jpcrp_cor:FiscalYearCoverPage", # 事業年度 事業年度、表紙 stringItemType
     "jpdei_cor:CurrentFiscalYearStartDateDEI", # 当事業年度開始日 当事業年度開始日、DEI dateItemType
     "jpdei_cor:CurrentFiscalYearEndDateDEI", # 当事業年度終了日 当事業年度終了日、DEI dateItemType
-    # "jpdei_cor:CurrentPeriodEndDateDEI", # 当会計期間終了日 当会計期間終了日、DEI dateItemType
     "jpdei_cor:AccountingStandardsDEI", # 会計基準 会計基準、DEI stringItemType
     "jpdei_cor:WhetherConsolidatedFinancialStatementsArePreparedDEI", # 連結決算の有無 連結決算の有無、DEI booleanItemType
 ]

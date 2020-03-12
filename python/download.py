@@ -18,11 +18,10 @@ from xbrl_reader import Inf, SchemaElement, Calc, init_xbrl_reader, read_company
 from xbrl_reader import readCalcSub, readCalcArcs, xsd_dics
 
 root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__))).replace('\\', '/')
-docs_path = root_dir + '/xbrl-zip'
-
+download_path = root_dir + '/zip/download'
 data_path = root_dir + '/python/data'
 
-for path in [data_path, docs_path]:
+for path in [data_path, download_path]:
     if not os.path.exists(path):
         # フォルダーがなければ作る。
 
@@ -39,6 +38,10 @@ def receive_edinet_doc_list(day_path: str, url: str):
     req = urllib.request.Request(url)
     with urllib.request.urlopen(req) as res:
         body = json.load(res)
+
+    if body['metadata']['status'] == "404":
+        print("報告書の取得を終了しました。")
+        return None
 
     assert body['metadata']['message'] == "OK"
 
@@ -97,7 +100,7 @@ def select_doc(day_path, body):
                     yield [ doc, edinetCode, company, dst_path ]
 
 def get_xbrl_docs():
-    # dt1 = datetime.datetime(year=2018, month=8, day=10)
+    # dt1 = datetime.datetime(year=2015, month=3, day=12)
     dt1 = datetime.datetime.today()
     
     while True:
@@ -106,7 +109,7 @@ def get_xbrl_docs():
         yyyymmdd = "%d-%02d-%02d" % (dt1.year, dt1.month, dt1.day)
         print(yyyymmdd)
 
-        day_path = "%s/%d/%02d/%02d" % (docs_path, dt1.year, dt1.month, dt1.day)
+        day_path = "%s/%d/%02d/%02d" % (download_path, dt1.year, dt1.month, dt1.day)
         if not os.path.exists(day_path):
             # フォルダーがなければ作る。
 
@@ -122,6 +125,8 @@ def get_xbrl_docs():
         else:
             url = 'https://disclosure.edinet-fsa.go.jp/api/v1/documents.json?date=%s&type=2' % yyyymmdd
             body = receive_edinet_doc_list(day_path, url)
+            if body is None:
+                break
             time.sleep(1)
 
         for doc, edinetCode, company, dst_path in select_doc(day_path, body):
