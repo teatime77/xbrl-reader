@@ -58,7 +58,7 @@ root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__))).replace('
 data_path    = root_dir + '/python/data'
 extract_path = root_dir + '/zip/extract'
 
-def ReadAllSchema(log_f):
+def ReadAllSchema():
     inf = Inf()
 
     xsd_label_files = [ 
@@ -69,6 +69,8 @@ def ReadAllSchema(log_f):
     ]
 
     for prefix, xsd_file, lable_file in xsd_label_files:
+        print('EDINETタクソノミの読み込み中・・・ : %s' % prefix)
+
         xsd_path = "%s/data/EDINET/taxonomy/2019-11-01/taxonomy/%s" % (root_dir, xsd_file)
 
         xsd_dic : Dict[str, SchemaElement] = {}
@@ -89,7 +91,6 @@ def ReadAllSchema(log_f):
         ReadLabel(label_root, xsd_dic, loc_dic, resource_dic)
 
         if prefix == "jppfs_cor":
-
             xsd_base = os.path.dirname(xsd_path)
 
             # フォルダーの下の計算リンクファイルに対し
@@ -103,13 +104,6 @@ def ReadAllSchema(log_f):
 
                 # 計算リンクの計算関係を得る。
                 readCalcArcs(xsd_dic, locs, arcs)
-
-            print("計算リンク 終了")
-            for ele in OrderedDict.fromkeys(xsd_dic.values()).keys():
-                if len(ele.calcTo) != 0:
-                    log_f.write(ele.verbose_label + '\n')
-                    for calc in ele.calcTo:
-                        log_f.write("\t%s %f %s %s\n" % (calc.to.verbose_label, calc.order, calc.weight, calc.role))
 
         ns_xsd_dic[prefix] = xsd_dic
 
@@ -179,7 +173,7 @@ def collect_values(edinetCode, values, major_context_names, stats, el: ET.Elemen
         # 報告書インスタンス 作成ガイドライン
         #   5-6-2 数値を表現する要素
 
-    name = '"%s", # %s %s %s' % (id, ele.label, ele.verbose_label, ele.type)
+    name = '"%s", # %s | %s | %s' % (id, ele.label, ele.verbose_label, ele.type)
 
     idx = context_names.index(context_ref)
     stats[idx][name] += 1
@@ -251,9 +245,9 @@ def make_summary(cpu_count, cpu_id, ns_xsd_dic_arg):
         ns_xsd_dic[key] = dict
 
     # ns_xsd_dic = ns_xsd_dic_arg
-    print("cpu:%d dic:%d" % (cpu_id, len(ns_xsd_dic)))
+    print("start subprocess cpu-id:%d" % cpu_id)
 
-    csv_f = [None] * 3
+    csv_f = [None, None, None]
     for context_type in range(3):
         csv_f[context_type] = codecs.open("%s/summary-%d-%d.csv" % (data_path, context_type, cpu_id), 'w', 'utf-8')
 
@@ -322,7 +316,7 @@ def make_summary(cpu_count, cpu_id, ns_xsd_dic_arg):
 
         cnt += 1
         if cnt % 500 == 0:
-            print("cpu:%d cnt:%d" % (cpu_id, cnt))
+            print("cpu-id:%d count:%d" % (cpu_id, cnt))
 
     for i, stats in enumerate([annual_stats, quarterly_stats]):
         with open("%s/stats-%d-%d.csv" % (data_path, i, cpu_id), 'wb') as f:
@@ -331,7 +325,7 @@ def make_summary(cpu_count, cpu_id, ns_xsd_dic_arg):
     for f in csv_f:
         f.close()
 
-    print("合計:%d" % cnt)
+    print("end subprocess  cpu-id:%d  total:%d" % (cpu_id, cnt))
 
 def concatenate_stats(cpu_count):
     stats_f = codecs.open("%s/stats.txt" % data_path, 'w', 'utf-8')
@@ -357,10 +351,10 @@ def concatenate_stats(cpu_count):
             if len(stats[idx]) == 0:
                 continue
 
-            stats_f.write("context:\t%s\n" % context_display_name(context_name) )
+            stats_f.write("\n%s\ncontext:\t%s\n%s\n" % ('-'*80, context_display_name(context_name), '-'*80) )
             v = list(sorted(stats[idx].items(), key=lambda x:x[1], reverse=True))
             for w, cnt in v[:200]:
-                stats_f.write("%s\t%d\n" % (w, cnt))
+                stats_f.write("%s | %d\n" % (w, cnt))
             stats_f.write("\n")
 
         stats_f.write("\n")
@@ -384,8 +378,7 @@ def concatenate_summary(cpu_count):
             f.write('\n'.join(summary_all))
 
 if __name__ == '__main__':
-    with codecs.open(data_path + "/schema.txt", 'w', 'utf-8') as f:
-        ReadAllSchema(f)
+    ReadAllSchema()
 
     cpu_count = multiprocessing.cpu_count()
     process_list = []
@@ -404,4 +397,4 @@ if __name__ == '__main__':
 
     concatenate_stats(cpu_count)
 
-    print('終了:%d' % int(time.time() - start_time) )
+    print('処理を終了しました。  処理時間:%d秒' % int(time.time() - start_time) )

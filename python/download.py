@@ -65,7 +65,7 @@ def receive_edinet_doc(yyyymmdd, doc, edinetCode, company, dst_path):
     assert edinetCode == doc['edinetCode']
     assert company == company_dic[edinetCode]
 
-    print("%s | %s | %s | %s | %s" % (yyyymmdd, doc['filerName'], doc['docDescription'], company['listing'], company['category_name']))
+    print("%s | %s | %s | %s" % (yyyymmdd, doc['filerName'], doc['docDescription'], company['category_name_jp']))
 
     url = "https://disclosure.edinet-fsa.go.jp/api/v1/documents/%s?type=1" % doc['docID']
     with urllib.request.urlopen(url) as web_file:
