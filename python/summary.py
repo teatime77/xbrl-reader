@@ -225,7 +225,14 @@ def get_xbrl_root(cpu_count, cpu_id):
 
         try:
             with zipfile.ZipFile(zip_path) as zf:
-                for xbrl_file in zf.namelist():
+
+                # 期末日とファイル名のペアのリスト
+                enddate_filename = [ [x.split('_')[2], x] for x in zf.namelist()  ]
+
+                # 期末日の順にソートする。
+                enddate_filename = sorted(enddate_filename, key=lambda x: x[0])
+
+                for enddate, xbrl_file in enddate_filename:
                     with zf.open(xbrl_file) as f:
                         xml_bin = f.read()
 
