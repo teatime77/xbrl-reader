@@ -39,6 +39,8 @@ instant_account_ids = [
     "jppfs_cor:CurrentPortionOfLongTermLoansPayable", # 1年内返済予定の長期借入金 | 1年内返済予定の長期借入金 | monetaryItemType | 7056
     "jppfs_cor:NoncurrentLiabilities", # 固定負債
     "jppfs_cor:BondsPayable", # 社債 | 社債 | monetaryItemType | 2980
+    "jppfs_cor:ConvertibleBondTypeBondsWithSubscriptionRightsToShares", # 転換社債型新株予約権付社債 | 転換社債型新株予約権付社債 | monetaryItemType | 218
+    "jppfs_cor:CommercialPapersLiabilities", # コマーシャル・ペーパー | コマーシャル・ペーパー | monetaryItemType | 287
     "jppfs_cor:LongTermLoansPayable", # 長期借入金 | 長期借入金 | monetaryItemType | 10584
     "jppfs_cor:NetAssets", # 純資産 純資産 monetaryItemType
     "jppfs_cor:ShareholdersEquity", # 株主資本
