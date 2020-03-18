@@ -34,13 +34,19 @@ instant_account_ids = [
     "jppfs_cor:InvestmentsAndOtherAssets", # 投資その他の資産
     "jppfs_cor:Liabilities", # 負債 monetaryItemType
     "jppfs_cor:CurrentLiabilities", # 流動負債
+    "jppfs_cor:ShortTermLoansPayable", # 短期借入金 | 短期借入金 | monetaryItemType | 10241
+    "jppfs_cor:CurrentPortionOfBonds", # 1年内償還予定の社債 | 1年内償還予定の社債 | monetaryItemType | 2184
+    "jppfs_cor:CurrentPortionOfLongTermLoansPayable", # 1年内返済予定の長期借入金 | 1年内返済予定の長期借入金 | monetaryItemType | 7056
     "jppfs_cor:NoncurrentLiabilities", # 固定負債
+    "jppfs_cor:BondsPayable", # 社債 | 社債 | monetaryItemType | 2980
+    "jppfs_cor:LongTermLoansPayable", # 長期借入金 | 長期借入金 | monetaryItemType | 10584
     "jppfs_cor:NetAssets", # 純資産 純資産 monetaryItemType
     "jppfs_cor:ShareholdersEquity", # 株主資本
     "jppfs_cor:CapitalStock", # 資本金
     "jppfs_cor:CapitalSurplus", # 資本剰余金
     "jppfs_cor:RetainedEarnings", # 利益剰余金
     "jppfs_cor:TreasuryStock", # 自己株式
+    "jppfs_cor:ValuationAndTranslationAdjustments", # 評価・換算差額等 | 評価・換算差額等 | monetaryItemType | 13564
 ]
 
 duration_account_ids = [
@@ -61,6 +67,8 @@ duration_account_ids = [
     "jppfs_cor:IncomeBeforeIncomeTaxes", # 税引前当期純利益又は税引前当期純損失（△） 税引前当期純利益又は税引前当期純損失（△） monetaryItemType
     "jppfs_cor:IncomeTaxes", # 法人税等 法人税等 monetaryItemType
     "jppfs_cor:ProfitLoss", # 当期純利益又は当期純損失（△） 当期純利益又は当期純損失（△）（平成26年3月28日財規等改正後） monetaryItemType
+    "jppfs_cor:ProfitLossAttributableToOwnersOfParent", # 親会社株主に帰属する当期純利益又は親会社株主に帰属する当期純損失（△） | 親会社株主に帰属する当期純利益又は親会社株主に帰属する当期純損失（△） | monetaryItemType | 21683
+    "jpcrp_cor:ComprehensiveIncomeSummaryOfBusinessResults", # 包括利益 | 包括利益、経営指標等 | monetaryItemType | 14258
     "jpcrp_cor:BasicEarningsLossPerShareSummaryOfBusinessResults", # １株当たり当期純利益又は当期純損失（△） １株当たり当期純利益又は当期純損失（△）、経営指標等 perShareItemType
     "jpcrp_cor:DilutedEarningsPerShareSummaryOfBusinessResults", # 潜在株式調整後1株当たり当期純利益 潜在株式調整後1株当たり当期純利益、経営指標等 perShareItemType
     "jpcrp_cor:DividendPaidPerShareSummaryOfBusinessResults", # １株当たり配当額 １株当たり配当額、経営指標等 perShareItemType
