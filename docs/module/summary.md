@@ -1,7 +1,8 @@
-xbrl\_run module
-================
+# summary.py
 
-.. automodule:: xbrl_run
+```eval_rst
+.. automodule:: summary
     :members:
     :undoc-members:
     :show-inheritance:
+```

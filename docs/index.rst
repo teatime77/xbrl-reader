@@ -1,26 +1,39 @@
-.. xbrl-reader documentation master file, created by
-   sphinx-quickstart on Mon Nov 12 11:27:06 2018.
+.. mynote documentation master file, created by
+   sphinx-quickstart on Fri Mar 20 17:45:04 2020.
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Welcome to xbrl-reader's documentation!
-=======================================
+XBRL Reader
+==================================
+
+| 金融庁の `EDINET <https://disclosure.edinet-fsa.go.jp/>`_ から上場企業の決算情報(XBRLファイル)をダウンロードし、
+| XBRLファイルからCSVファイルを作成します。
 
 .. toctree::
-   :maxdepth: 2
-   :caption: Contents:
+   :maxdepth: 0
+   :caption: 目次:
 
-   xbrl_reader
-   xbrl_run
+   context.md
+   csv.md
+   process_flow.md
+   exec.md
 
-.. uml::
+   module/index
 
-   Alice -> Bob: Hi!
-   Alice <- Bob: How are you?
+| Qiitaの記事もご覧ください。
+| `全上場企業の過去５年間の決算情報をCSVファイルに変換 <https://qiita.com/teatime77/items/e5aa2d9027749768f50d>`_
 
-Indices and tables
-==================
+| ソースはGitHubにあります。
+| https://github.com/teatime77/xbrl-reader
+
+.. plantuml
+   .. uml::
+
+      Alice -> Bob: Hi!
+      Alice <- Bob: How are you?
+
 
 * :ref:`genindex`
 * :ref:`modindex`
-* :ref:`search`
+
+.. * :ref:`search`

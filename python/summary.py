@@ -59,6 +59,8 @@ data_path    = root_dir + '/python/data'
 extract_path = root_dir + '/zip/extract'
 
 def ReadAllSchema():
+    """スキーマと名称リンクと計算リンクのファイルを読む。
+    """
     inf = Inf()
 
     xsd_label_files = [ 
@@ -110,6 +112,18 @@ def ReadAllSchema():
     # assert xsd_dics[uri] == xsd_dic
 
 def get_context_type(context_name: str):
+    """コンテストのタイプを返す。
+
+    * 0: 提出日時点
+    * 1: 会計末時点
+    * 2: 会計期間
+
+    Args:
+        context_name(str) : コンテスト名
+
+    Returns:
+        int : コンテストのタイプ
+    """
     k = context_name.rfind("_NonConsolidatedMember")
     if k != -1:
         context_name = context_name[: k]
@@ -119,16 +133,16 @@ def get_context_type(context_name: str):
 
         return 0
     elif context_name.endswith("Instant"):
-        # その他の時点の場合
+        # 会計末時点の場合
 
         return 1
     else:
         assert context_name.endswith("Duration")
-        # 期間の場合
+        # 会計期間の場合
 
         return 2
 
-def collect_values(edinetCode, values, major_context_names, stats, el: ET.Element):
+def collect_values(edinetCode: str, values, major_context_names, stats, el: ET.Element):
     """XBRLファイルの内容を読む。
     """
     id, uri, tag_name, text = parseElement(el)        
@@ -145,14 +159,22 @@ def collect_values(edinetCode, values, major_context_names, stats, el: ET.Elemen
     if context_ref is None or not context_ref in context_names:
         return
 
+    # 名前空間を得る。
     ns = uri.split('/')[-1]
 
     ele = None
     if ns in ns_xsd_dic:
+        # 名前空間に対応するスキーマの辞書がある場合
+
         xsd_dic = ns_xsd_dic[ns]
         if tag_name in xsd_dic:
+            # タグ名に対応する要素がスキーマの辞書にある場合
+
+            # タグ名に対応する要素を得る。
             ele =xsd_dic[tag_name]
             if ele.type in ["textBlockItemType"]:
+                # テキストブロックの場合
+
                 return
 
     if ele is None:
@@ -160,13 +182,20 @@ def collect_values(edinetCode, values, major_context_names, stats, el: ET.Elemen
 
     id = "%s:%s" % (ns, tag_name)
 
+    # コンテストのタイプを得る。
     context_type = get_context_type(context_ref)
+
+    # コンテストのタイプに対応する項目の辞書を得る。
     account_dic  = account_dics[context_type]
+
     if id in account_dic and context_ref in major_context_names:
+
 
         major_idx = major_context_names.index(context_ref)
 
         if ele.type == "stringItemType" and ('\r' in text or '\n' in text):
+            # テキストの中に改行がある場合
+            
             text = text.replace('\r', '').replace('\n', '').strip()
 
         values[major_idx][ account_dic[id] ] = text
@@ -178,15 +207,35 @@ def collect_values(edinetCode, values, major_context_names, stats, el: ET.Elemen
     idx = context_names.index(context_ref)
     stats[idx][name] += 1
 
-def context_display_name(context_ref):
+def context_display_name(context_ref: str):
+    """コンテストの日本語名を返す。
+
+    Args:
+        context_ref(str): コンテスト名
+
+    Returns:
+        str : コンテストの日本語名
+    """
     if context_ref.endswith("_NonConsolidatedMember"):
+        # 個別決算の場合
+
         name = context_ref.replace("_NonConsolidatedMember", "")
         return period_names[name].replace("連結", "個別")
     else:
+        # 連結決算の場合
+
         return period_names[context_ref]
 
 
-def make_titles(context_type):
+def make_titles(context_type: str) -> List[str]:
+    """CSVファイルの先頭行に表示する項目名のリストを返す。
+
+    Args:
+        context_type(str)   : コンテスト名
+
+    Returns:
+        List[str]: 項目名のリスト
+    """
     account_ids = all_account_ids[context_type]
     account_dic = account_dics[context_type]
 
@@ -195,16 +244,25 @@ def make_titles(context_type):
         assert not id in account_dic
         account_dic[id] = i
 
+        # 名前空間とタグ名を得る。
         ns, tag_name = id.split(':')
 
+        # 名前空間に対応するスキーマの辞書を得る。
         assert ns in ns_xsd_dic
         xsd_dic = ns_xsd_dic[ns]
+
+        # タグ名に対応する要素を得る。
         assert tag_name in xsd_dic
         ele =xsd_dic[tag_name]
 
         if id in [ "jppfs_cor:DepreciationAndAmortizationOpeCF", "jppfs_cor:DepreciationSGA"]:
+            # キャッシュフローまたは損益計算書の減価償却費の場合
+
+            # 冗長ラベルを使う。
             label = ele.verbose_label
         else:
+
+            # 通常のラベルを使う。
             label = ele.label
 
         assert not "," in label
@@ -215,6 +273,17 @@ def make_titles(context_type):
     return titles
 
 def get_xbrl_root(cpu_count, cpu_id):
+    """CPUごとのサブプロセスの処理
+
+    EDINETコードをCPU数で割った余りがCPU-IDに等しければ処理をする。
+
+    Args:
+        cpu_count(int): CPU数
+        cpu_id   (int): CPU-ID (0, ..., CPU数 - 1)
+
+    Returns:
+        XBRLファイルの名前とパースしたルート
+    """
     for zip_path_obj in Path(extract_path).glob("**/E*.zip"):
         zip_path = str(zip_path_obj)
 
@@ -224,6 +293,7 @@ def get_xbrl_root(cpu_count, cpu_id):
             continue
 
         try:
+            # 抽出先のZIPファイルを読み込みモードで開く。
             with zipfile.ZipFile(zip_path) as zf:
 
                 # 期末日とファイル名のペアのリスト
@@ -232,11 +302,17 @@ def get_xbrl_root(cpu_count, cpu_id):
                 # 期末日の順にソートする。
                 enddate_filename = sorted(enddate_filename, key=lambda x: x[0])
 
-                for enddate, xbrl_file in enddate_filename:
+                # ZIPファイル内のXBRLファイルに対し
+                for _, xbrl_file in enddate_filename:
+
+                    # XBRLファイルのデータを読む。
                     with zf.open(xbrl_file) as f:
                         xml_bin = f.read()
 
+                    # バイナリデータをutf-8テキストとしてデコードする。
                     xml_text = xml_bin.decode('utf-8')
+
+                    # XBRLファイルのテキストをパースする。
                     root = ET.fromstring(xml_text)
 
                     yield xbrl_file, root
@@ -246,6 +322,16 @@ def get_xbrl_root(cpu_count, cpu_id):
             continue
 
 def make_summary(cpu_count, cpu_id, ns_xsd_dic_arg):
+    """CPUごとのサブプロセスの処理
+
+    EDINETコードをCPU数で割った余りがCPU-IDに等しければ処理をする。
+
+    Args:
+        cpu_count(int) : CPU数
+        cpu_id   (int) : CPU-ID (0, ..., CPU数 - 1)
+        ns_xsd_dic_arg : スキーマの辞書
+    """
+
     global ns_xsd_dic
 
     for key, dict in ns_xsd_dic_arg.items():
@@ -258,10 +344,15 @@ def make_summary(cpu_count, cpu_id, ns_xsd_dic_arg):
     for context_type in range(3):
         csv_f[context_type] = codecs.open("%s/summary-%d-%d.csv" % (data_path, context_type, cpu_id), 'w', 'utf-8')
 
+        # CSVファイルの先頭行に表示する項目名のリスト
         titles = make_titles(context_type)
         if context_type == 0:
+            # 提出日時点の場合
+
             csv_f[context_type].write("EDINETコード,会計期間終了日,報告書略号,%s\n" % ",".join(titles) )
         else:
+            # 会計末時点か会計期間の場合
+
             csv_f[context_type].write("EDINETコード,会計期間終了日,報告書略号,コンテキスト,%s\n" % ",".join(titles) )
 
     annual_stats = [ Counter() for _ in context_names ]
@@ -269,6 +360,7 @@ def make_summary(cpu_count, cpu_id, ns_xsd_dic_arg):
 
     cnt = 0
 
+    # XBRLファイルの名前とパースしたルートに対し
     for xbrl_file_name, root in get_xbrl_root(cpu_count, cpu_id):
 
         # 報告書インスタンス作成ガイドライン
@@ -293,6 +385,8 @@ def make_summary(cpu_count, cpu_id, ns_xsd_dic_arg):
 
         company = company_dic[edinetCode]
         if company['category_name_jp'] in ["保険業", "その他金融業", "証券、商品先物取引業", "銀行業"]:
+            # 銀行・証券・保険などの金融業は会計が特殊なのでスキップ
+
             continue
 
         v2 = v1[0].split('-')
@@ -313,6 +407,8 @@ def make_summary(cpu_count, cpu_id, ns_xsd_dic_arg):
         values = [ [""] * len(all_account_ids[ get_context_type(x) ]) for x in major_context_names ]
 
         collect_values(edinetCode, values, major_context_names, stats, root)
+
+        # 主要なコンテキストの種類ごとに
         for idx, context_name in enumerate(major_context_names):
             context_type = get_context_type(context_name)
 
@@ -325,8 +421,11 @@ def make_summary(cpu_count, cpu_id, ns_xsd_dic_arg):
         if cnt % 500 == 0:
             print("cpu-id:%d count:%d" % (cpu_id, cnt))
 
+    # 報告書の種類ごとに
     for i, stats in enumerate([annual_stats, quarterly_stats]):
-        with open("%s/stats-%d-%d.csv" % (data_path, i, cpu_id), 'wb') as f:
+
+        # statsのpickleを書く。
+        with open("%s/stats-%d-%d.pickle" % (data_path, i, cpu_id), 'wb') as f:
             pickle.dump(stats, f)
 
     for f in csv_f:
@@ -335,25 +434,38 @@ def make_summary(cpu_count, cpu_id, ns_xsd_dic_arg):
     print("end subprocess  cpu-id:%d  total:%d" % (cpu_id, cnt))
 
 def concatenate_stats(cpu_count):
+    """サブプロセスで作ったstatsを１つにまとめる。
+
+    Args:
+        cpu_count(int): CPU数
+    """
     stats_f = codecs.open("%s/stats.txt" % data_path, 'w', 'utf-8')
 
+    # 報告書の種類ごとに
     for report_idx, report_name in enumerate([ "有価証券報告書", "四半期報告書" ]):
         stats_f.write("report:\t%s\n" % report_name)
         stats_f.write("\n")
 
         stats = [ Counter() for _ in context_names ]
+
+        # CPU-IDに対し
         for cpu_id in range(cpu_count):
 
-            stats_path = "%s/stats-%d-%d.csv" % (data_path, report_idx, cpu_id)
+            # statsのpickleを読む。
+            stats_path = "%s/stats-%d-%d.pickle" % (data_path, report_idx, cpu_id)
             with open(stats_path, 'rb') as f:
                 stats_tmp = pickle.load(f)
 
             os.remove(stats_path)
 
+            # コンテキストの種類ごとに
             for idx, context_name in enumerate(context_names):
+
+                # 項目ごとに
                 for name, cnt in stats_tmp[idx].items():
                     stats[idx][name] += cnt
 
+        # コンテキストの種類ごとに
         for idx, context_name in enumerate(context_names):
             if len(stats[idx]) == 0:
                 continue
@@ -369,7 +481,13 @@ def concatenate_stats(cpu_count):
     stats_f.close()
 
 
-def concatenate_summary(cpu_count):
+def concatenate_summary(cpu_count: int):
+    """サブプロセスで作ったCSVファイルを１つにまとめる。
+
+    Args:
+        cpu_count(int): CPU数
+    """
+    # ３つのコンテストのタイプに対し
     for context_type in range(3):
         summary_all = []
         for cpu_id in range(cpu_count):
@@ -389,6 +507,8 @@ if __name__ == '__main__':
 
     cpu_count = multiprocessing.cpu_count()
     process_list = []
+
+    # CPUごとにサブプロセスを作って並列処理をする。
     for cpu_id in range(cpu_count):
 
         p = Process(target=make_summary, args=(cpu_count, cpu_id, ns_xsd_dic))
@@ -397,6 +517,7 @@ if __name__ == '__main__':
 
         p.start()
 
+    # すべてのサブプロセスが終了するのを待つ。
     for p in process_list:
         p.join()
 

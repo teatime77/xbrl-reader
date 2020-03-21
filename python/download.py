@@ -1,21 +1,12 @@
 import datetime
 import os
-import sys
 import json
-from collections import Counter
-from pathlib import Path
 import urllib.request
 import codecs
 import zipfile
-import xml.etree.ElementTree as ET
 import time
-import re
-import random
-from typing import Dict, List, Any
-from collections import OrderedDict
 
-from xbrl_reader import Inf, SchemaElement, Calc, init_xbrl_reader, read_company_dic, readXbrlThread, make_public_docs_list, read_lines, parseElement, getAttribs, label_role, verboseLabel_role, find
-from xbrl_reader import readCalcSub, readCalcArcs, xsd_dics
+from xbrl_reader import read_company_dic
 
 root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__))).replace('\\', '/')
 download_path = root_dir + '/zip/download'
@@ -27,19 +18,28 @@ for path in [data_path, download_path]:
 
         os.makedirs(path)
 
+# 会社情報の辞書を得る。
 company_dic = read_company_dic()
 
-def print_freq(vcnt, top):
-    v = list(sorted(vcnt.items(), key=lambda x:x[1], reverse=True))
-    for w, cnt in v[:top]:
-        print(w, cnt)
+def receive_edinet_doc_list(day_path: str, yyyymmdd: str):
+    """EDINETから書類一覧APIを使って書類一覧が入ったJSONオブジェクト取得して返す。
 
-def receive_edinet_doc_list(day_path: str, url: str):
+        Args:
+            day_path (str): JSONオブジェクトを保存するフォルダーのパス
+            yyyymmdd (str): 日付の文字列
+
+        Returns:
+            書類一覧が入ったJSONオブジェクト
+    """
+    # 書類一覧APIのリクエストを送る。
+    url = 'https://disclosure.edinet-fsa.go.jp/api/v1/documents.json?date=%s&type=2' % yyyymmdd
     req = urllib.request.Request(url)
     with urllib.request.urlopen(req) as res:
         body = json.load(res)
 
     if body['metadata']['status'] == "404":
+        # 書類がない場合
+
         print("報告書の取得を終了しました。")
         return None
 
@@ -53,7 +53,16 @@ def receive_edinet_doc_list(day_path: str, url: str):
     return body
 
 def check_zip_file(zip_path: str):
+    """ZIPファイルが壊れていないか調べる。
+
+    Args:
+        zip_path(str): ZIPファイルのパス
+
+    Returns:
+        bool: 壊れていなければTrue
+    """
     try:
+        # ZIPファイルを開いて壊れていないか調べる。
         with zipfile.ZipFile(zip_path) as zf:
             file_list = list(zf.namelist())
 
@@ -61,20 +70,31 @@ def check_zip_file(zip_path: str):
     except zipfile.BadZipFile:
         return False
 
-def receive_edinet_doc(yyyymmdd, doc, edinetCode, company, dst_path):
-    assert edinetCode == doc['edinetCode']
-    assert company == company_dic[edinetCode]
+def receive_edinet_doc(doc, dst_path):
+    """EDINETから書類取得APIで決算情報のZIPファイルをダウンロードする。
 
-    print("%s | %s | %s | %s" % (yyyymmdd, doc['filerName'], doc['docDescription'], company['category_name_jp']))
+    Args:
+        doc          : 書類オブジェクト
+        dst_path(str): ダウンロード先のパス
+    """
+    edinetCode = doc['edinetCode']
+    company = company_dic[edinetCode]
 
+    # 提出日時、提出者名、提出書類概要、業種を画面表示する。
+    print("%s | %s | %s | %s" % (doc['submitDateTime'], doc['filerName'], doc['docDescription'], company['category_name_jp']))
+
+    # 書類取得APIのリクエストを送る。
     url = "https://disclosure.edinet-fsa.go.jp/api/v1/documents/%s?type=1" % doc['docID']
     with urllib.request.urlopen(url) as web_file:
         data = web_file.read()
 
+        # 決算情報のZIPファイルに書く。
         with open(dst_path, mode='wb') as local_file:
             local_file.write(data)
 
         if not check_zip_file(dst_path):
+            # ZIPファイルが壊れている場合
+
             print("!!!!!!!!!! ERROR !!!!!!!!!!\n" * 1)
             print("msg:[%s] status:[%s] reason:[%s]" % (str(web_file.msg), str(web_file.status), str(web_file.reason) ))
             print("!!!!!!!!!! ERROR [%s] !!!!!!!!!!\n" % dst_path)
@@ -87,23 +107,43 @@ def receive_edinet_doc(yyyymmdd, doc, edinetCode, company, dst_path):
     time.sleep(1)
 
 def select_doc(day_path, body):
+    """書類一覧の中で対象となる書類を返す。
+
+    対象となる書類とは以下の条件を満たす書類。  
+
+    * 有価証券報告書/四半期報告書/半期報告書またはそれの訂正書類。
+    * 財務局職員が修正した書類ではない。  
+    * 会社情報の一覧に含まれる上場企業の書類
+
+    Returns:
+        対象書類
+    """
     for doc in body['results']:   
         docTypeCode = doc['docTypeCode']
         if docTypeCode in [ '120', '130', '140', '150', '160', '170' ] and doc['docInfoEditStatus'] == "0":
+            # 有価証券報告書/四半期報告書/半期報告書またはそれの訂正書類で、財務局職員が修正したのではない場合
+
             edinetCode = doc['edinetCode']
             if edinetCode in company_dic:
+                # 会社情報の一覧に含まれる場合
+
                 company = company_dic[edinetCode]
                 if company['listing'] == '上場':
+                    # 上場企業の場合
 
-                    dst_path = "%s/%s-%s-%d.zip" % (day_path, edinetCode, docTypeCode, doc['seqNumber'])
-
-                    yield [ doc, edinetCode, company, dst_path ]
+                    yield doc
 
 def get_xbrl_docs():
-    # dt1 = datetime.datetime(year=2015, month=3, day=12)
+    """ダウンロードのメイン処理
+
+    現在の日付から１日ずつ過去にさかのぼって書類をダウンロードする。
+    """
+
+    # 現在の日付
     dt1 = datetime.datetime.today()
     
     while True:
+        # １日過去にさかのぼる。
         dt1 = dt1 + datetime.timedelta(days=-1)
             
         yyyymmdd = "%d-%02d-%02d" % (dt1.year, dt1.month, dt1.day)
@@ -119,25 +159,34 @@ def get_xbrl_docs():
 
         json_path = "%s/docs.json" % day_path
         if os.path.exists(json_path):
+            # 書類一覧のJSONファイルがすでにある場合
+
             with codecs.open(json_path, 'r', 'utf-8') as f:
                 body = json.load(f)
 
         else:
-            url = 'https://disclosure.edinet-fsa.go.jp/api/v1/documents.json?date=%s&type=2' % yyyymmdd
-            body = receive_edinet_doc_list(day_path, url)
+            # 書類一覧のJSONファイルがない場合
+
+            body = receive_edinet_doc_list(day_path, yyyymmdd)
             if body is None:
                 break
             time.sleep(1)
 
-        for doc, edinetCode, company, dst_path in select_doc(day_path, body):
+        for doc in select_doc(day_path, body):
+            dst_path = "%s/%s-%s-%d.zip" % (day_path, doc['edinetCode'], doc['docTypeCode'], doc['seqNumber'])
             if os.path.exists(dst_path):
+                # すでに決算情報のZIPファイルがある場合
+
                 if check_zip_file(dst_path):
+                    # ZIPファイルが壊れていない場合
+
                     continue
 
+                # 壊れているZIPファイルは削除する。
                 os.remove(dst_path)
                 
-
-            receive_edinet_doc(yyyymmdd, doc, edinetCode, company, dst_path)
+            # EDINETから決算情報のZIPファイルをダウンロードする。
+            receive_edinet_doc(doc, dst_path)
 
 
 if __name__ == '__main__':

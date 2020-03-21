@@ -376,12 +376,19 @@ def check_taxonomy():
             # sys.exit()   
 
 def read_company_dic():
+    """
+        会社情報の辞書を返す。
+
+        Returns:
+            会社情報の辞書。キーはEDINETコード。値は上場区分, 会社名, 業種(日本語), 業種(英語)
+    """
 
     lines = read_csv_file(root_dir + '/data/EDINET/EdinetcodeDlInfo.csv', 'shift_jis')
 
     # 最初の2行の見出しは取り除く。
     lines = lines[2:]
 
+    # 会社情報の辞書。キーはEDINETコード。値は上場区分, 会社名, 業種(日本語), 業種(英語)
     company_dic = dict( (x[0], { 'listing':x[2], 'company_name':x[6], 'category_name_jp': x[10], 'category_name': category_name_dic[x[10]] } ) for x in lines if 11 <= len(x) )
 
     return company_dic

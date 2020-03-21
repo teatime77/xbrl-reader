@@ -1,4 +1,4 @@
-xbrl\_reader module
+xbrl\_reader.py
 ===================
 
 .. automodule:: xbrl_reader
