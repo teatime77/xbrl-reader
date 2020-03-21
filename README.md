@@ -1,11 +1,10 @@
 このリポジトリにはXBRLファイルの読み取りをする２種類のアプリが入っています。  
 
-それぞれのアプリの説明はQiitaの記事とWikiをご覧ください。  
+それぞれのアプリの説明は以下をご覧ください。  
 
 * Qiitaの記事 : [全上場企業の過去５年間の決算情報をCSVファイルに変換](https://qiita.com/teatime77/items/e5aa2d9027749768f50d)  
-  * wiki
-    * [データのダウンロードとCSVファイルへの変換](https://github.com/teatime77/xbrl-reader/wiki/%E3%83%87%E3%83%BC%E3%82%BF%E3%81%AE%E3%83%80%E3%82%A6%E3%83%B3%E3%83%AD%E3%83%BC%E3%83%89%E3%81%A8CSV%E3%83%95%E3%82%A1%E3%82%A4%E3%83%AB%E3%81%B8%E3%81%AE%E5%A4%89%E6%8F%9B)
-    * [コンテキストとCSVファイル](https://github.com/teatime77/xbrl-reader/wiki/%E3%82%B3%E3%83%B3%E3%83%86%E3%82%AD%E3%82%B9%E3%83%88%E3%81%A8CSV%E3%83%95%E3%82%A1%E3%82%A4%E3%83%AB)
+  * ドキュメント
+    * [http://lkzf.info/xbrl/doc](http://lkzf.info/xbrl/doc)
   
   
 * Qiitaの記事 : [XBRLから上場企業の決算書の情報を得る。](https://qiita.com/teatime77/items/3ed6d4cd27f6440e163a)  
