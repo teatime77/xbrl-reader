@@ -17,7 +17,7 @@ XBRL Reader
    csv.md
    process_flow.md
    exec.md
-   stats.md
+   freq_stats.md
    output_items.md
    release.md
 

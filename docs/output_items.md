@@ -39,4 +39,4 @@ duration_account_ids = [
 
 **summary-2.csv** (会計期間)に出力する項目は **duration_account_ids** の中に書きます。
 
-出力する項目を追加したい場合は、 [勘定科目の出現回数](stats.md) で説明した **python/data/stats.txt** の中の1行をコピーして追加してください。
+出力する項目を追加したい場合は、 [勘定科目の出現回数](freq_stats.md) で説明した **python/data/stats.txt** の中の1行をコピーして追加してください。

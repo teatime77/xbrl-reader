@@ -14,6 +14,7 @@
    extract
    summary
    xbrl_table
+   stats
    xbrl_reader
    xbrl_run
 
