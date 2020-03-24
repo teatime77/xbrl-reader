@@ -169,6 +169,8 @@ class SchemaElement:
         self.verbose_label = None
         self.calcTo = []
         self.sorted = False
+        self.parents = []
+        self.child_elements = []
 
     def setLabel(self, role, text):
         if role == label_role:
@@ -298,7 +300,9 @@ class Dimension(XbrlNode):
         self.set_schema(schema)
 
 class MyJSONEncoder(JSONEncoder):
-    def default(self, o):
+    # False positive for E0202 (method-hidden) 
+    #   https://github.com/PyCQA/pylint/issues/414
+    def default(self, o): # pylint: disable=E0202
         if isinstance(o, XbrlNode):
 
             if isinstance(o, Item):

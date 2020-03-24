@@ -17,6 +17,9 @@ XBRL Reader
    csv.md
    process_flow.md
    exec.md
+   stats.md
+   output_items.md
+   release.md
 
    module/index
 

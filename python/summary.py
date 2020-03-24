@@ -16,13 +16,20 @@ from typing import Dict, List, Any
 from collections import OrderedDict
 import multiprocessing
 from multiprocessing import Process, Array
+from enum import IntEnum
 
 from xbrl_reader import Inf, SchemaElement, read_lines, ReadSchema, ReadLabel, parseElement, read_company_dic, getAttribs, label_role, verboseLabel_role
 from xbrl_reader import readCalcSub, readCalcArcs, period_names
 from download import company_dic
-from xbrl_table import all_account_ids
+from xbrl_table import all_account_ids, filing_date_account_ids
+from stats import write_calc_tree
 
 start_time = time.time()
+
+class ContextType(IntEnum):
+    FilingDate = 0  # 提出日時点
+    Instant = 1     # 会計終了時点
+    Duration = 2    # 会計期間
 
 base_annual_context_names = [
     "CurrentYearInstant", "CurrentYearDuration", 
@@ -53,6 +60,7 @@ context_names = [ "FilingDateInstant" ] + annual_context_names + quarterly_conte
 
 account_dics = [ {}, {}, {} ]
 ns_xsd_dic = {}
+verbose_label_dic = {}
 
 root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__))).replace('\\', '/')
 data_path    = root_dir + '/python/data'
@@ -92,11 +100,11 @@ def ReadAllSchema():
         # 名称リンクファイルの内容を読む。
         ReadLabel(label_root, xsd_dic, loc_dic, resource_dic)
 
-        if prefix == "jppfs_cor":
+        if prefix in [ "jppfs_cor", "jpigp_cor" ]:
             xsd_base = os.path.dirname(xsd_path)
 
             # フォルダーの下の計算リンクファイルに対し
-            for xml_path_obj in Path(xsd_base).glob('r/*/*_cal_*.xml'):
+            for xml_path_obj in Path(xsd_base).glob('r/**/*_cal_*.xml'):
                 xml_path = str(xml_path_obj).replace('\\', '/')
                 locs = {}
                 arcs = []
@@ -108,6 +116,9 @@ def ReadAllSchema():
                 readCalcArcs(xsd_dic, locs, arcs)
 
         ns_xsd_dic[prefix] = xsd_dic
+
+        for ele in xsd_dic.values():
+            verbose_label_dic[ele.verbose_label] = ele
 
     # assert xsd_dics[uri] == xsd_dic
 
@@ -131,16 +142,16 @@ def get_context_type(context_name: str):
     if context_name == "FilingDateInstant":
         # 提出日時点の場合
 
-        return 0
+        return ContextType.FilingDate
     elif context_name.endswith("Instant"):
         # 会計末時点の場合
 
-        return 1
+        return ContextType.Instant
     else:
         assert context_name.endswith("Duration")
         # 会計期間の場合
 
-        return 2
+        return ContextType.Duration
 
 def collect_values(edinetCode: str, values, major_context_names, stats, el: ET.Element):
     """XBRLファイルの内容を読む。
@@ -188,21 +199,35 @@ def collect_values(edinetCode: str, values, major_context_names, stats, el: ET.E
     # コンテストのタイプに対応する項目の辞書を得る。
     account_dic  = account_dics[context_type]
 
-    if id in account_dic and context_ref in major_context_names:
+    if context_ref in major_context_names:
+        # 集計対象のコンテストの場合
 
+        if not id in account_dic and '（IFRS）' in ele.verbose_label:
+            # 集計対象のIDでなく、冗長ラベルに'（IFRS）'が含まれる場合
 
-        major_idx = major_context_names.index(context_ref)
-
-        if ele.type == "stringItemType" and ('\r' in text or '\n' in text):
-            # テキストの中に改行がある場合
+            # 冗長ラベルから'（IFRS）'を取り除く。
+            verbose_label = ele.verbose_label.replace('（IFRS）', '')
             
-            text = text.replace('\r', '').replace('\n', '').strip()
+            if verbose_label in verbose_label_dic:
+                # 冗長ラベルの辞書にある場合
 
-        values[major_idx][ account_dic[id] ] = text
-        # 報告書インスタンス 作成ガイドライン
-        #   5-6-2 数値を表現する要素
+                # 'Japan GAAP'の要素で代用する。
+                ele = verbose_label_dic[verbose_label]
+                id  = ele.id.replace('_cor_', '_cor:')
 
-    name = '"%s", # %s | %s | %s' % (id, ele.label, ele.verbose_label, ele.type)
+        if id in account_dic:
+            # 集計対象のIDの場合
+
+            major_idx = major_context_names.index(context_ref)
+
+            if ele.type == "stringItemType" and ('\r' in text or '\n' in text):
+                # テキストの中に改行がある場合
+                
+                text = text.replace('\r', '').replace('\n', '').strip()
+
+            values[major_idx][ account_dic[id] ] = text
+
+    name = id
 
     idx = context_names.index(context_ref)
     stats[idx][name] += 1
@@ -321,7 +346,7 @@ def get_xbrl_root(cpu_count, cpu_id):
             print("\nBadZipFile : %s\n" % zip_path)
             continue
 
-def make_summary(cpu_count, cpu_id, ns_xsd_dic_arg):
+def make_summary(cpu_count, cpu_id, ns_xsd_dic_arg, verbose_label_dic_arg):
     """CPUごとのサブプロセスの処理
 
     EDINETコードをCPU数で割った余りがCPU-IDに等しければ処理をする。
@@ -332,10 +357,12 @@ def make_summary(cpu_count, cpu_id, ns_xsd_dic_arg):
         ns_xsd_dic_arg : スキーマの辞書
     """
 
-    global ns_xsd_dic
+    global ns_xsd_dic, verbose_label_dic
 
     for key, dict in ns_xsd_dic_arg.items():
         ns_xsd_dic[key] = dict
+
+    verbose_label_dic = verbose_label_dic_arg.copy()
 
     # ns_xsd_dic = ns_xsd_dic_arg
     print("start subprocess cpu-id:%d" % cpu_id)
@@ -355,8 +382,8 @@ def make_summary(cpu_count, cpu_id, ns_xsd_dic_arg):
 
             csv_f[context_type].write("EDINETコード,会計期間終了日,報告書略号,コンテキスト,%s\n" % ",".join(titles) )
 
-    annual_stats = [ Counter() for _ in context_names ]
-    quarterly_stats = [ Counter() for _ in context_names ]
+    annual_account_stats = {}
+    quarterly_account_stats = {}
 
     cnt = 0
 
@@ -392,11 +419,9 @@ def make_summary(cpu_count, cpu_id, ns_xsd_dic_arg):
         v2 = v1[0].split('-')
         repo = v2[1]
         if repo == "asr":
-            stats = annual_stats
             major_context_names = [ "FilingDateInstant" ] + annual_context_names
 
         elif repo in [ "q1r", "q2r", "q3r", "q4r" ]:
-            stats = quarterly_stats
             major_context_names = [ "FilingDateInstant" ] + quarterly_context_names
 
         elif repo == "ssr":
@@ -404,9 +429,46 @@ def make_summary(cpu_count, cpu_id, ns_xsd_dic_arg):
         else:
             assert False
 
+        stats_local = [ Counter() for _ in context_names ]
+        
         values = [ [""] * len(all_account_ids[ get_context_type(x) ]) for x in major_context_names ]
 
-        collect_values(edinetCode, values, major_context_names, stats, root)
+        collect_values(edinetCode, values, major_context_names, stats_local, root)
+
+        # 会計基準の位置
+        accounting_standards_idx = filing_date_account_ids.index("jpdei_cor:AccountingStandardsDEI")
+        assert accounting_standards_idx == 5
+
+        # 提出日時点の位置
+        filing_date_instant_idx = major_context_names.index("FilingDateInstant")
+        assert filing_date_instant_idx == 0
+
+        # 会計基準
+        accounting_standard = values[filing_date_instant_idx][accounting_standards_idx]
+        assert accounting_standard != ""
+
+        if repo == "asr":
+            # 有価証券報告書の場合
+
+            account_stats = annual_account_stats
+        else:
+            # 四半期報告書の場合
+
+            account_stats = quarterly_account_stats
+
+        if accounting_standard in account_stats:
+            # 会計基準がすでにある場合
+
+            stats_sum = account_stats[accounting_standard]
+        else:
+            # 初めての会計基準の場合
+
+            stats_sum = [ Counter() for _ in context_names ]
+            account_stats[accounting_standard] = stats_sum
+
+        for tmp_sum, tmp in zip(stats_sum, stats_local):
+            for s, c in tmp.items():
+                tmp_sum[s] += c
 
         # 主要なコンテキストの種類ごとに
         for idx, context_name in enumerate(major_context_names):
@@ -422,11 +484,12 @@ def make_summary(cpu_count, cpu_id, ns_xsd_dic_arg):
             print("cpu-id:%d count:%d" % (cpu_id, cnt))
 
     # 報告書の種類ごとに
-    for i, stats in enumerate([annual_stats, quarterly_stats]):
+    for report_idx, account_stats in enumerate([annual_account_stats, quarterly_account_stats]):
 
-        # statsのpickleを書く。
-        with open("%s/stats-%d-%d.pickle" % (data_path, i, cpu_id), 'wb') as f:
-            pickle.dump(stats, f)
+        # statsをpickleに書く。
+        stats_path = '%s/stats-%d-%d.pickle' % (data_path, report_idx, cpu_id)
+        with open(stats_path, 'wb') as f:
+            pickle.dump(account_stats, f)
 
     for f in csv_f:
         f.close()
@@ -441,12 +504,13 @@ def concatenate_stats(cpu_count):
     """
     stats_f = codecs.open("%s/stats.txt" % data_path, 'w', 'utf-8')
 
+    annual_account_stats = {}
+    quarterly_account_stats = {}
+
     # 報告書の種類ごとに
     for report_idx, report_name in enumerate([ "有価証券報告書", "四半期報告書" ]):
-        stats_f.write("report:\t%s\n" % report_name)
-        stats_f.write("\n")
 
-        stats = [ Counter() for _ in context_names ]
+        account_stats = annual_account_stats if report_idx == 0 else quarterly_account_stats
 
         # CPU-IDに対し
         for cpu_id in range(cpu_count):
@@ -454,31 +518,63 @@ def concatenate_stats(cpu_count):
             # statsのpickleを読む。
             stats_path = "%s/stats-%d-%d.pickle" % (data_path, report_idx, cpu_id)
             with open(stats_path, 'rb') as f:
-                stats_tmp = pickle.load(f)
+                stats_dic_tmp = pickle.load(f)
 
             os.remove(stats_path)
 
+            # 会計基準ごとに
+            for accounting_standard, stats_tmp in stats_dic_tmp.items():
+
+                if accounting_standard in account_stats:
+                    stats_sum = account_stats[accounting_standard]
+                else:
+                    stats_sum = [ Counter() for _ in context_names ]
+                    account_stats[accounting_standard] = stats_sum
+
+                # コンテキストの種類ごとに
+                for idx, context_name in enumerate(context_names):
+
+                    # 項目ごとに
+                    for name, cnt in stats_tmp[idx].items():
+                        stats_sum[idx][name] += cnt
+
+        stats_f.write("\n%s\n報告書      : %s\n%s\n" % ('-'*80, report_name, '-'*80) )
+
+        # 会計基準ごとに
+        for accounting_standard, stats in account_stats.items():
+            stats_f.write("\n%s\n会計基準    : %s\n%s\n" % ('-'*60, accounting_standard, '-'*60) )
+
             # コンテキストの種類ごとに
             for idx, context_name in enumerate(context_names):
+                if len(stats[idx]) == 0:
+                    continue
 
-                # 項目ごとに
-                for name, cnt in stats_tmp[idx].items():
-                    stats[idx][name] += cnt
+                stats_f.write("\n%s\nコンテキスト: %s\n%s\n" % ('-'*40, context_display_name(context_name), '-'*40) )
+                v = list(sorted(stats[idx].items(), key=lambda x:x[1], reverse=True))
+                for id, cnt in v[:200]:
 
-        # コンテキストの種類ごとに
-        for idx, context_name in enumerate(context_names):
-            if len(stats[idx]) == 0:
-                continue
+                    # 名前空間とタグ名を得る。
+                    ns, tag_name = id.split(':')
 
-            stats_f.write("\n%s\ncontext:\t%s\n%s\n" % ('-'*80, context_display_name(context_name), '-'*80) )
-            v = list(sorted(stats[idx].items(), key=lambda x:x[1], reverse=True))
-            for w, cnt in v[:200]:
-                stats_f.write("%s | %d\n" % (w, cnt))
+                    # 名前空間に対応するスキーマの辞書を得る。
+                    assert ns in ns_xsd_dic
+                    xsd_dic = ns_xsd_dic[ns]
+
+                    # タグ名に対応する要素を得る。
+                    assert tag_name in xsd_dic
+                    ele =xsd_dic[tag_name]
+
+                    name = '"%s", # %s | %s | %s' % (id, ele.label, ele.verbose_label, ele.type)
+
+                    stats_f.write("\t%s | %d\n" % (name, cnt))
+
+                stats_f.write("\n")
+
             stats_f.write("\n")
 
-        stats_f.write("\n")
-
     stats_f.close()
+
+    write_calc_tree(context_names, ns_xsd_dic, annual_account_stats, quarterly_account_stats)
 
 
 def concatenate_summary(cpu_count: int):
@@ -511,7 +607,7 @@ if __name__ == '__main__':
     # CPUごとにサブプロセスを作って並列処理をする。
     for cpu_id in range(cpu_count):
 
-        p = Process(target=make_summary, args=(cpu_count, cpu_id, ns_xsd_dic))
+        p = Process(target=make_summary, args=(cpu_count, cpu_id, ns_xsd_dic, verbose_label_dic))
 
         process_list.append(p)
 

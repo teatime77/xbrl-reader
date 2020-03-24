@@ -25,7 +25,7 @@ instant_account_ids = [
     "jpcrp_cor:NetAssetsPerShareSummaryOfBusinessResults", # １株当たり純資産額 １株当たり純資産額、経営指標等 perShareItemType
     "jpcrp_cor:EquityToAssetRatioSummaryOfBusinessResults", # 自己資本比率 自己資本比率、経営指標等 percentItemType
     "jpcrp_cor:CashAndCashEquivalentsSummaryOfBusinessResults", # 現金及び現金同等物の残高 現金及び現金同等物の残高、経営指標等 monetaryItemType
-    
+
     "jppfs_cor:Assets",  # 資産 monetaryItemType
     "jppfs_cor:CurrentAssets", # 流動資産 monetaryItemType
     "jppfs_cor:NoncurrentAssets", # 固定資産 monetaryItemType
