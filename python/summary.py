@@ -58,6 +58,7 @@ context_names = [ "FilingDateInstant" ] + annual_context_names + quarterly_conte
     # "Prior1QuarterInstant_NonConsolidatedMember", "Prior1YTDDuration_NonConsolidatedMember", "Prior1QuarterDuration_NonConsolidatedMember",
     # "InterimInstant", "InterimInstant_NonConsolidatedMember", "InterimDuration", "InterimDuration_NonConsolidatedMember"  
 
+fixed_ids = False
 account_dics = [ {}, {}, {} ]
 ns_xsd_dic = {}
 verbose_label_dic = {}
@@ -118,7 +119,16 @@ def ReadAllSchema():
         ns_xsd_dic[prefix] = xsd_dic
 
         for ele in xsd_dic.values():
-            verbose_label_dic[ele.verbose_label] = ele
+            if ele.verbose_label in verbose_label_dic:
+                # 冗長ラベルの辞書にある場合
+
+                # 辞書にあるものと同じはず
+                assert verbose_label_dic[ele.verbose_label] == ele
+            else:
+                # 冗長ラベルの辞書にない場合
+
+                # 辞書に追加する。
+                verbose_label_dic[ele.verbose_label] = ele
 
     # assert xsd_dics[uri] == xsd_dic
 
@@ -202,35 +212,42 @@ def collect_values(edinetCode: str, values, major_context_names, stats, el: ET.E
     if context_ref in major_context_names:
         # 集計対象のコンテストの場合
 
-        if not id in account_dic and '（IFRS）' in ele.verbose_label:
-            # 集計対象のIDでなく、冗長ラベルに'（IFRS）'が含まれる場合
+        if fixed_ids:
+            # 項目が固定の場合
 
-            # 冗長ラベルから'（IFRS）'を取り除く。
-            verbose_label = ele.verbose_label.replace('（IFRS）', '')
-            
-            if verbose_label in verbose_label_dic:
-                # 冗長ラベルの辞書にある場合
+            if not id in account_dic and '（IFRS）' in ele.verbose_label:
+                # 集計対象のIDでなく、冗長ラベルに'（IFRS）'が含まれる場合
 
-                # 'Japan GAAP'の要素で代用する。
-                ele = verbose_label_dic[verbose_label]
-                id  = ele.id.replace('_cor_', '_cor:')
+                # 冗長ラベルから'（IFRS）'を取り除く。
+                verbose_label = ele.verbose_label.replace('（IFRS）', '')
+                
+                if verbose_label in verbose_label_dic:
+                    # 冗長ラベルの辞書にある場合
+
+                    # 'Japan GAAP'の要素で代用する。
+                    ele = verbose_label_dic[verbose_label]
+                    id  = ele.id.replace('_cor_', '_cor:')
 
         if id in account_dic:
             # 集計対象のIDの場合
 
             major_idx = major_context_names.index(context_ref)
 
-            if ele.type == "stringItemType" and ('\r' in text or '\n' in text):
-                # テキストの中に改行がある場合
+            if ele.type == "stringItemType":
+                # 文字列の場合
                 
-                text = text.replace('\r', '').replace('\n', '').strip()
+                # エスケープ処理をする。
+                text = json.dumps(text, ensure_ascii=False)
 
             values[major_idx][ account_dic[id] ] = text
 
-    name = id
+    if context_type != ContextType.FilingDate and ele.type in [ "stringItemType", "dateItemType", "booleanItemType" ]:
+        # 提出日時点以外のコンテストで、型が数値でない場合
+
+        return
 
     idx = context_names.index(context_ref)
-    stats[idx][name] += 1
+    stats[idx][id] += 1
 
 def context_display_name(context_ref: str):
     """コンテストの日本語名を返す。
@@ -263,11 +280,17 @@ def make_titles(context_type: str) -> List[str]:
     """
     account_ids = all_account_ids[context_type]
     account_dic = account_dics[context_type]
+    assert len(account_ids) == len(set(account_ids))
 
+    # 項目名のリスト
     titles = [""] * len(account_ids)
-    for i, id in enumerate(account_ids):
+
+    # スキーマの要素のリスト
+    eles   = [None] * len(account_ids)
+
+    for id_idx, id in enumerate(account_ids):
         assert not id in account_dic
-        account_dic[id] = i
+        account_dic[id] = id_idx
 
         # 名前空間とタグ名を得る。
         ns, tag_name = id.split(':')
@@ -280,20 +303,28 @@ def make_titles(context_type: str) -> List[str]:
         assert tag_name in xsd_dic
         ele =xsd_dic[tag_name]
 
-        if id in [ "jppfs_cor:DepreciationAndAmortizationOpeCF", "jppfs_cor:DepreciationSGA"]:
-            # キャッシュフローまたは損益計算書の減価償却費の場合
+        if ele.label in titles:
+            # すでに同じラベルがある場合
+
+            # 重複するラベルの位置
+            i = titles.index(ele.label)
+
+            # 冗長ラベルが重複しないはず。
+            assert ele.verbose_label != eles[i].verbose_label
 
             # 冗長ラベルを使う。
+            titles[i] = eles[i].verbose_label
             label = ele.verbose_label
         else:
+            # 同じラベルがない場合
 
-            # 通常のラベルを使う。
             label = ele.label
 
-        assert not "," in label
         assert not label in titles
+        assert not "," in label
 
-        titles[i] = label
+        eles[id_idx]   = ele
+        titles[id_idx] = label
 
     return titles
 
@@ -346,7 +377,64 @@ def get_xbrl_root(cpu_count, cpu_id):
             print("\nBadZipFile : %s\n" % zip_path)
             continue
 
-def make_summary(cpu_count, cpu_id, ns_xsd_dic_arg, verbose_label_dic_arg):
+def read_stats_json():
+    """出現頻度ののJSONファイルを読む。
+    """
+    global all_account_ids, filing_date_account_ids
+
+    # 出現頻度のJSONファイルを読む。
+    # 前回の実行で作ったstats.jsonをstats-master.jsonにリネームしておく。
+    with codecs.open('%s/stats-master.json' % data_path, 'r', 'utf-8') as f:
+        stats_json = json.load(f)
+
+    # コンテストのタイプごとに使用する項目のsetのリスト
+    all_account_ids = [ set(), set(), set() ]
+
+    # 報告書の種類ごとに
+    for report_name, report_json in stats_json.items():
+
+        # 会計基準ごとに
+        for accounting_standard, accounting_json in report_json.items():
+
+            # コンテキストごとに
+            for context_name, context_json in accounting_json.items():
+                if context_name.startswith('Prior'):
+                    # 前期、前々期などの場合
+
+                    continue
+
+                # コンテストのタイプごとに使用する項目のset
+                ids = all_account_ids[get_context_type(context_name)]
+                valid_cnt = 0
+
+                # 項目ごとに
+                for id, v in context_json.items():
+                    if v[3] in [ "stringItemType", "dateItemType" ]:
+                        # 文字列か日付の場合
+
+                        if id != "jpdei_cor:AccountingStandardsDEI":
+                            # 会計基準でない場合
+
+                            continue
+
+                    # booleanItemType, nonNegativeIntegerItemType, monetaryItemType, perShareItemType, percentItemType, decimalItemType, sharesItemType
+
+                    # 使用する項目のsetに追加する。
+                    ids.add(id)
+
+                    valid_cnt += 1
+                    if valid_cnt == 200:
+                        # 出現頻度の上位200個の項目のみ使う。
+
+                        break
+
+    # setをlistに変換する。
+    all_account_ids = [list(x) for x in all_account_ids]
+
+    # 提出日時点
+    filing_date_account_ids = all_account_ids[0]
+
+def make_summary(fixed_ids_arg, cpu_count, cpu_id, ns_xsd_dic_arg, verbose_label_dic_arg, all_account_ids_arg, filing_date_account_ids_arg):
     """CPUごとのサブプロセスの処理
 
     EDINETコードをCPU数で割った余りがCPU-IDに等しければ処理をする。
@@ -357,12 +445,15 @@ def make_summary(cpu_count, cpu_id, ns_xsd_dic_arg, verbose_label_dic_arg):
         ns_xsd_dic_arg : スキーマの辞書
     """
 
-    global ns_xsd_dic, verbose_label_dic
+    global fixed_ids, ns_xsd_dic, verbose_label_dic, all_account_ids, filing_date_account_ids
 
+    fixed_ids = fixed_ids_arg
     for key, dict in ns_xsd_dic_arg.items():
         ns_xsd_dic[key] = dict
 
     verbose_label_dic = verbose_label_dic_arg.copy()
+    all_account_ids         = all_account_ids_arg
+    filing_date_account_ids = filing_date_account_ids_arg
 
     # ns_xsd_dic = ns_xsd_dic_arg
     print("start subprocess cpu-id:%d" % cpu_id)
@@ -433,11 +524,11 @@ def make_summary(cpu_count, cpu_id, ns_xsd_dic_arg, verbose_label_dic_arg):
         
         values = [ [""] * len(all_account_ids[ get_context_type(x) ]) for x in major_context_names ]
 
+        # XBRLファイルの内容を読む。
         collect_values(edinetCode, values, major_context_names, stats_local, root)
 
         # 会計基準の位置
         accounting_standards_idx = filing_date_account_ids.index("jpdei_cor:AccountingStandardsDEI")
-        assert accounting_standards_idx == 5
 
         # 提出日時点の位置
         filing_date_instant_idx = major_context_names.index("FilingDateInstant")
@@ -507,6 +598,9 @@ def concatenate_stats(cpu_count):
     annual_account_stats = {}
     quarterly_account_stats = {}
 
+    # 出現頻度のJSON
+    stats_json = {}
+
     # 報告書の種類ごとに
     for report_idx, report_name in enumerate([ "有価証券報告書", "四半期報告書" ]):
 
@@ -540,8 +634,17 @@ def concatenate_stats(cpu_count):
 
         stats_f.write("\n%s\n報告書      : %s\n%s\n" % ('-'*80, report_name, '-'*80) )
 
+        # 報告書の種類ごとの出現頻度のJSON
+        report_json = {}
+        stats_json[report_name] = report_json
+
         # 会計基準ごとに
         for accounting_standard, stats in account_stats.items():
+
+            # 会計基準ごとの出現頻度のJSON
+            accounting_json = {}
+            report_json[accounting_standard] = accounting_json
+            
             stats_f.write("\n%s\n会計基準    : %s\n%s\n" % ('-'*60, accounting_standard, '-'*60) )
 
             # コンテキストの種類ごとに
@@ -549,9 +652,15 @@ def concatenate_stats(cpu_count):
                 if len(stats[idx]) == 0:
                     continue
 
+                # コンテキストごとの出現頻度のJSON
+                context_json = {}
+                accounting_json[context_name] = context_json
+
                 stats_f.write("\n%s\nコンテキスト: %s\n%s\n" % ('-'*40, context_display_name(context_name), '-'*40) )
                 v = list(sorted(stats[idx].items(), key=lambda x:x[1], reverse=True))
-                for id, cnt in v[:200]:
+
+                # 項目ごとに
+                for id, cnt in v:
 
                     # 名前空間とタグ名を得る。
                     ns, tag_name = id.split(':')
@@ -568,11 +677,18 @@ def concatenate_stats(cpu_count):
 
                     stats_f.write("\t%s | %d\n" % (name, cnt))
 
+                    # 出現頻度, ラベル, 冗長ラベル, 型をJSONに保存する。
+                    context_json[id] = [cnt, ele.label, ele.verbose_label, ele.type ]
+
                 stats_f.write("\n")
 
             stats_f.write("\n")
 
     stats_f.close()
+
+    # 出現頻度をJSONファイルに書く。
+    with codecs.open('%s/stats.json' % data_path, 'w', 'utf-8') as f:
+        json.dump(stats_json, f, ensure_ascii=False, indent=4)
 
     write_calc_tree(context_names, ns_xsd_dic, annual_account_stats, quarterly_account_stats)
 
@@ -599,6 +715,22 @@ def concatenate_summary(cpu_count: int):
             f.write('\n'.join(summary_all))
 
 if __name__ == '__main__':
+
+    args = sys.argv
+    if len(args) == 2:
+        assert args[1] == 'fix'
+
+        # 出力する項目がxbrl_table.pyの値で固定の場合
+        fixed_ids = True
+    else:
+
+        # 前回の実行で作った出現頻度のJSONファイルを使い、出現頻度の高い項目を出力する場合
+        fixed_ids = False
+
+        # 出現頻度のJSONファイルを読む。
+        read_stats_json()
+
+    # スキーマと名称リンクと計算リンクのファイルを読む。
     ReadAllSchema()
 
     cpu_count = multiprocessing.cpu_count()
@@ -607,7 +739,7 @@ if __name__ == '__main__':
     # CPUごとにサブプロセスを作って並列処理をする。
     for cpu_id in range(cpu_count):
 
-        p = Process(target=make_summary, args=(cpu_count, cpu_id, ns_xsd_dic, verbose_label_dic))
+        p = Process(target=make_summary, args=(fixed_ids, cpu_count, cpu_id, ns_xsd_dic, verbose_label_dic, all_account_ids, filing_date_account_ids))
 
         process_list.append(p)
 

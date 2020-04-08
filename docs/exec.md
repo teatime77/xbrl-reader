@@ -1,26 +1,5 @@
 # 実行手順
 
-
-## 処理の概要
-
-以下の４つの処理があります。
-
-* **処理１** : 金融庁の[EDINET](https://disclosure.edinet-fsa.go.jp/)からZIPファイルをダウンロードします。
-* **処理２** : ZIPファイルの中からXBRLインスタンスファイルを抽出します。
-* **処理３** : XBRLインスタンスファイルから **summary-0.csv**, **summary-1.csv**, **summary-2.csv** を作ります。
-* **処理４** : **summary-0.csv**, **summary-1.csv**, **summary-2.csv** と会社情報から **summary-join.csv** を作ります。
-
-**処理１** は３日くらいかかり、ダウンロードしたファイルは13GBくらいになります。  
-  
-**処理３** と **処理４** はGoogle Colaboratory でも実行できます。  
-処理内容は以下の Jupyter ノートブックをご覧ください。  
-* [処理３のノートブック](https://github.com/teatime77/xbrl-reader/blob/master/notebook/make_summary_012.ipynb)  
-* [処理４のノートブック](https://github.com/teatime77/xbrl-reader/blob/master/notebook/make_summary_join.ipynb)  
-  
-**処理１** と **処理２** は省略して、 **処理２** で作ったデータを使って **処理３** 以降を実行することもできます。  
-  
-以下では **処理１** と **処理２** の実行手順を説明します。  
-
 ## 動作環境設定
 
 **Windows10** で **python 3.7** を使いました。
@@ -64,7 +43,7 @@ XBRL-HOME - python
                           - EdinetcodeDlInfo.csv
 ```
 
-## 処理１． 金融庁のEDINETからZIPファイルをダウンロードします。
+## ZIPファイルをダウンロード
 
 **python** フォルダーに移動して **download.py** を実行します。
 
@@ -73,13 +52,16 @@ cd XBRL-HOME/python
 python download.py
 ```
 
-全上場企業の過去５年分の有価証券報告書、四半期報告書、半期報告書をダウンロードします。  
+金融庁の[EDINET](https://disclosure.edinet-fsa.go.jp/)から全上場企業の過去５年分の有価証券報告書、四半期報告書、半期報告書のZIPファイルをダウンロードします。  
+
 ダウンロードしたZIPファイルは **XBRL-HOME/zip/download** の日付別のフォルダーに入ります。  
   
-全部ダウンロードするのに３日以上かかります。  
+全部ダウンロードするのに３日くらいかかり、ファイルサイズは13GBくらいになります。 
+
 途中でエラーになった場合は、再度download.pyを実行するとエラーになったところからダウンロードを再開します。
 
-## 処理２． ZIPファイルの中からXBRLインスタンスファイルを抽出します。
+## XBRLインスタンスを抽出
+ZIPファイルの中からXBRLインスタンスファイルを抽出します。
 
 **python** フォルダーで以下を実行します。
 
@@ -91,13 +73,54 @@ python extract.py
 サイズは5GBくらいです。  
   
 これをtarで8つにまとめたファイルが以下にあります。  
-* [http://lkzf.info/xbrl/data/extract/extract-0.tar](http://lkzf.info/xbrl/data/extract/extract-0.tar)  
-* [http://lkzf.info/xbrl/data/extract/extract-1.tar](http://lkzf.info/xbrl/data/extract/extract-1.tar)  
-* [http://lkzf.info/xbrl/data/extract/extract-2.tar](http://lkzf.info/xbrl/data/extract/extract-2.tar)  
-* [http://lkzf.info/xbrl/data/extract/extract-3.tar](http://lkzf.info/xbrl/data/extract/extract-3.tar)  
-* [http://lkzf.info/xbrl/data/extract/extract-4.tar](http://lkzf.info/xbrl/data/extract/extract-4.tar)  
-* [http://lkzf.info/xbrl/data/extract/extract-5.tar](http://lkzf.info/xbrl/data/extract/extract-5.tar)  
-* [http://lkzf.info/xbrl/data/extract/extract-6.tar](http://lkzf.info/xbrl/data/extract/extract-6.tar)  
-* [http://lkzf.info/xbrl/data/extract/extract-7.tar](http://lkzf.info/xbrl/data/extract/extract-7.tar)  
+* [http://lkzf.info/xbrl/data/2020-04-08/extract/extract-0.tar](http://lkzf.info/xbrl/data/2020-04-08/extract/extract-0.tar)  
+* [http://lkzf.info/xbrl/data/2020-04-08/extract/extract-1.tar](http://lkzf.info/xbrl/data/2020-04-08/extract/extract-1.tar)  
+* [http://lkzf.info/xbrl/data/2020-04-08/extract/extract-2.tar](http://lkzf.info/xbrl/data/2020-04-08/extract/extract-2.tar)  
+* [http://lkzf.info/xbrl/data/2020-04-08/extract/extract-3.tar](http://lkzf.info/xbrl/data/2020-04-08/extract/extract-3.tar)  
+* [http://lkzf.info/xbrl/data/2020-04-08/extract/extract-4.tar](http://lkzf.info/xbrl/data/2020-04-08/extract/extract-4.tar)  
+* [http://lkzf.info/xbrl/data/2020-04-08/extract/extract-5.tar](http://lkzf.info/xbrl/data/2020-04-08/extract/extract-5.tar)  
+* [http://lkzf.info/xbrl/data/2020-04-08/extract/extract-6.tar](http://lkzf.info/xbrl/data/2020-04-08/extract/extract-6.tar)  
+* [http://lkzf.info/xbrl/data/2020-04-08/extract/extract-7.tar](http://lkzf.info/xbrl/data/2020-04-08/extract/extract-7.tar)  
 
-**処理３** はこのデータを使います。
+## XBRL→CSV作成
+
+**python** フォルダーで以下を実行します。
+
+```bash
+python summary.py
+```
+
+実行すると **python/data** フォルダーに以下のファイルが作られます。
+
+```eval_rst
+======================  ===================================
+ファイル名               内容
+======================  ===================================
+**summary-0.csv**       報告書の提出日 **時点** の情報  
+**summary-1.csv**       会計終了 **時点** の情報  
+**summary-2.csv**       会計 **期間** の情報  
+**stats.json**          各項目の出現頻度
+======================  ===================================
+```
+
+以下のように引数に **fix** をつけると、出力する項目は **xbrl_table.py** で指定した項目になります。  
+ ( [出力する項目の指定](output_items.md) )
+
+```bash
+python summary.py fix
+```
+
+引数に **fix** がないと出力する項目は出現頻度によって自動的に決まります。  
+出現頻度は上記の **stats.json** を **stats-master.json** にリネームしたファイルから読み取ります。
+
+出力する項目を手動で指定したい場合は **fix** をつけ、項目を自動的に絞り込みたい場合は **fix** をつけません。
+
+## 表を結合, 業績予想の前処理, 業績予想
+
+これらの処理はGoogle Colaboratory でも実行できます。  
+処理内容は以下の Jupyter ノートブックをご覧ください。  
+
+* [表を結合](https://github.com/teatime77/xbrl-reader/blob/master/notebook/make_summary_join.ipynb)  
+* [業績予想の前処理](https://github.com/teatime77/xbrl-reader/blob/master/notebook/preprocess.ipynb)  
+* [業績予想(sklearn)](https://github.com/teatime77/xbrl-reader/blob/master/notebook/sklearn.ipynb)  
+* [業績予想(TensorFlow)](https://github.com/teatime77/xbrl-reader/blob/master/notebook/TensorFlow.ipynb)  

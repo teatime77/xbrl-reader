@@ -1,6 +1,11 @@
-# 出力する勘定科目の指定
+# 出力する項目の指定
 
-**処理３** の **summary.py** でCSVファイルに出力する項目は **python** フォルダーの **xbrl_table.py** で指定します。
+<font color="red">ここで書かれている内容はsummary.pyを実行するときコマンドライン引数に'fix'を指定したときのみ有効です。</font>
+
+<font color="red">引数がない場合は、出力する項目は出現頻度によって自動的に決まります。</font>
+
+
+**summary.py** でCSVファイルに出力する項目は **python** フォルダーの **xbrl_table.py** で指定します。
 
 コンテストごとに出力先のCSVファイルが変わります。
 
@@ -39,4 +44,4 @@ duration_account_ids = [
 
 **summary-2.csv** (会計期間)に出力する項目は **duration_account_ids** の中に書きます。
 
-出力する項目を追加したい場合は、 [勘定科目の出現回数](freq_stats.md) で説明した **python/data/stats.txt** の中の1行をコピーして追加してください。
+出力する項目を追加したい場合は、 [項目の出現回数](freq_stats.md) で説明した **python/data/stats.txt** の中の1行をコピーして追加してください。

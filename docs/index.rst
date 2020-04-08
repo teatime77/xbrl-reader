@@ -9,6 +9,8 @@ XBRL Reader
 | 金融庁の `EDINET <https://disclosure.edinet-fsa.go.jp/>`_ から上場企業の決算情報(XBRLファイル)をダウンロードし、
 | XBRLファイルからCSVファイルを作成します。
 
+作成したCSVファイルから機械学習で業績予想をします。
+
 .. toctree::
    :maxdepth: 0
    :caption: 目次:
@@ -19,9 +21,8 @@ XBRL Reader
    exec.md
    freq_stats.md
    output_items.md
-   release.md
-
    module/index
+   release.md
 
 | Qiitaの記事もご覧ください。
 | `全上場企業の過去５年間の決算情報をCSVファイルに変換 <https://qiita.com/teatime77/items/e5aa2d9027749768f50d>`_
