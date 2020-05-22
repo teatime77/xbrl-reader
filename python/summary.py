@@ -384,7 +384,28 @@ def read_stats_json():
 
     # 出現頻度のJSONファイルを読む。
     # 前回の実行で作ったstats.jsonをstats-master.jsonにリネームしておく。
-    with codecs.open('%s/stats-master.json' % data_path, 'r', 'utf-8') as f:
+    stats_master_path = '%s/stats-master.json' % data_path
+    if not os.path.exists(stats_master_path):
+        # stats-master.jsonがない場合
+
+        stats_path = '%s/stats.json' % data_path
+        if os.path.exists(stats_path):
+            # stats.jsonがある場合
+
+            print('\n    %sを、stats-master.jsonにリネームしてから実行してください。' % stats_path)
+
+        else:
+            # stats.jsonがない場合
+
+            print('\n    %sがありません。\n' % stats_master_path)
+            print('    以下の手順を実行してください。\n')
+            print('    1. 引数にfixをつけて実行します。\n')
+            print('        python summary.py fix\n')
+            print('    2. %sを、stats-master.jsonにリネームします。' % stats_path)
+
+        sys.exit()
+
+    with codecs.open(stats_master_path, 'r', 'utf-8') as f:
         stats_json = json.load(f)
 
     # コンテストのタイプごとに使用する項目のsetのリスト
