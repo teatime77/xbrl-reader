@@ -536,10 +536,11 @@ def make_summary(fixed_ids_arg, cpu_count, cpu_id, ns_xsd_dic_arg, verbose_label
         elif repo in [ "q1r", "q2r", "q3r", "q4r" ]:
             major_context_names = [ "FilingDateInstant" ] + quarterly_context_names
 
-        elif repo == "ssr":
+        elif repo == "ssr" or repo == "q5r":
             continue
         else:
-            assert False
+            print("unknown report", repo, xbrl_file_name)
+            continue
 
         stats_local = [ Counter() for _ in context_names ]
         
