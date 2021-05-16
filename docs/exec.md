@@ -6,16 +6,14 @@
 
 #### 1. pythonのライブラリをインストールします。
 
-XHTMLをパースするのに **lxml** を使っています。  
-[lxml - XML and HTML with Python](https://lxml.de/)  
-  
-pipでインストールできます。
+XHTMLをパースするのに **lxml** を使い、CSVファイルの処理に **pandas** を使っています。  
+
+ **lxml** も **pandas** もpipでインストールできます。
 
 ```bash
 pip install lxml
+pip install pandas
 ```
-
-※ pythonで使う外部ライブラリは **lxml** だけです。
 
 #### 2. ソースをダウンロードします。
 
@@ -115,12 +113,24 @@ python summary.py fix
 
 出力する項目を手動で指定したい場合は **fix** をつけ、出力項目を自動的に絞り込みたい場合は **fix** をつけません。
 
-## 表を結合, 業績予想の前処理, 業績予想
+## 表を結合
+
+**summary-0.csv**, **summary-1.csv**, **summary-3.csv** を結合して１つの表にします。
+
+**python** フォルダーで以下を実行します。
+
+```bash
+python join.py
+```
+
+結合した表は **python/data** フォルダーに **summary-join.csv** というCSVファイルに保存されます。
+
+
+## 業績予想の前処理, 業績予想
 
 これらの処理はGoogle Colaboratory でも実行できます。  
 処理内容は以下の Jupyter ノートブックをご覧ください。  
 
-* [表を結合](https://github.com/teatime77/xbrl-reader/blob/master/notebook/make_summary_join.ipynb)  
 * [業績予想の前処理](https://github.com/teatime77/xbrl-reader/blob/master/notebook/preprocess.ipynb)  
 * [業績予想(sklearn)](https://github.com/teatime77/xbrl-reader/blob/master/notebook/sklearn.ipynb)  
 * [業績予想(TensorFlow)](https://github.com/teatime77/xbrl-reader/blob/master/notebook/TensorFlow.ipynb)  
