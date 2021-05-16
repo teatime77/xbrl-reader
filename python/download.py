@@ -1,4 +1,5 @@
 import datetime
+import sys
 import os
 import json
 import urllib.request
@@ -35,7 +36,11 @@ def receive_edinet_doc_list(day_path: str, yyyymmdd: str):
     url = 'https://disclosure.edinet-fsa.go.jp/api/v1/documents.json?date=%s&type=2' % yyyymmdd
     req = urllib.request.Request(url)
     with urllib.request.urlopen(req) as res:
-        body = json.load(res)
+        try:
+            body = json.load(res)
+        except json.decoder.JSONDecodeError:
+            print("書類一覧のデータが不正です。\nEDINETがメンテナンス中の可能性があります。")
+            sys.exit()
 
     if body['metadata']['status'] == "404":
         # 書類がない場合
